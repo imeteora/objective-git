@@ -49,6 +49,8 @@ typedef NS_OPTIONS(unsigned int, GTEnumeratorOptions) {
 @class GTRepository;
 @class GTCommit;
 
+NS_ASSUME_NONNULL_BEGIN
+
 /// Enumerates the commits in a repository.
 @interface GTEnumerator : NSEnumerator
 
@@ -60,13 +62,18 @@ typedef NS_OPTIONS(unsigned int, GTEnumeratorOptions) {
 /// To set new options, use -resetWithOptions:.
 @property (nonatomic, assign, readonly) GTEnumeratorOptions options;
 
-/// Initializes the receiver to enumerate the commits in the given repository.
+- (instancetype)init NS_UNAVAILABLE;
+
+/// The underlying `git_revwalk` from libgit2.
+- (git_revwalk *)git_revwalk __attribute__((objc_returns_inner_pointer));
+
+/// Initializes the receiver to enumerate the commits in the given repository. Designated initializer.
 ///
 /// repo  - The repository to enumerate the commits of. This must not be nil.
 /// error - If not NULL, set to any error that occurs.
 ///
 /// Returns an initialized enumerator, or nil if an error occurs.
-- (id)initWithRepository:(GTRepository *)repo error:(NSError **)error;
+- (id _Nullable)initWithRepository:(GTRepository *)repo error:(NSError **)error NS_DESIGNATED_INITIALIZER;
 
 /// Marks a commit to start traversal from.
 ///
@@ -85,6 +92,21 @@ typedef NS_OPTIONS(unsigned int, GTEnumeratorOptions) {
 /// Returns whether pushing matching references was successful.
 - (BOOL)pushGlob:(NSString *)refGlob error:(NSError **)error;
 
+/// Push HEAD reference.
+///
+/// error - If not NULL, this will be set to any error that occurs.
+///
+/// Returns whether pushing the HEAD reference was successful.
+- (BOOL)pushHEAD:(NSError **)error;
+
+/// Push a reference by name.
+///
+/// refName - The reference name to push. Must not be nil.
+/// error   - If not NULL, this will be set to any error that occurs.
+///
+/// Returns whether pushing the reference name was successful.
+- (BOOL)pushReferenceName:(NSString *)refName error:(NSError **)error;
+
 /// Hides the specified commit and all of its ancestors when enumerating.
 ///
 /// sha   - The SHA of a commit in the receiver's repository. This must not be
@@ -102,6 +124,22 @@ typedef NS_OPTIONS(unsigned int, GTEnumeratorOptions) {
 /// Returns whether marking matching references for hiding was successful.
 - (BOOL)hideGlob:(NSString *)refGlob error:(NSError **)error;
 
+/// Hide HEAD reference.
+///
+/// error - If not NULL, this will be set to any error that occurs.
+///
+/// Returns whether marking HEAD for hiding was successful.
+- (BOOL)hideHEAD:(NSError **)error;
+
+
+/// Hide a reference by name.
+///
+/// refName - The reference name to hide. Must not be nil.
+/// error   - If not NULL, this will be set to any error that occurs.
+///
+/// Returns whether hiding the reference name was successful.
+- (BOOL)hideReferenceName:(NSString *)refName error:(NSError **)error;
+
 /// Resets the receiver, putting it back into a clean state for reuse, and
 /// replacing the receiver's `options`.
 - (void)resetWithOptions:(GTEnumeratorOptions)options;
@@ -111,7 +149,17 @@ typedef NS_OPTIONS(unsigned int, GTEnumeratorOptions) {
 /// error - If not NULL, set to any error that occurs during traversal.
 ///
 /// Returns a (possibly empty) array of GTCommits, or nil if an error occurs.
-- (NSArray *)allObjectsWithError:(NSError **)error;
+- (NSArray<GTCommit *> * _Nullable)allObjectsWithError:(NSError **)error;
+
+/// Get the next OID.
+///
+/// success - If not NULL, this will be set to whether getting the next object
+///           was successful. This will be YES if the receiver is exhausted, so
+///           it can be used to interpret the meaning of a nil return value.
+/// error   - If not NULL, set to any error that occurs during traversal.
+///
+/// Returns nil if an error occurs or the enumeration is done.
+- (GTOID * _Nullable)nextOIDWithSuccess:(BOOL * _Nullable)success error:(NSError **)error;
 
 /// Gets the next commit.
 ///
@@ -121,7 +169,7 @@ typedef NS_OPTIONS(unsigned int, GTEnumeratorOptions) {
 /// error   - If not NULL, set to any error that occurs during traversal.
 ///
 /// Returns nil if an error occurs or the receiver is exhausted.
-- (GTCommit *)nextObjectWithSuccess:(BOOL *)success error:(NSError **)error;
+- (GTCommit * _Nullable)nextObjectWithSuccess:(BOOL * _Nullable)success error:(NSError **)error;
 
 /// Counts the number of commits that were not enumerated, completely exhausting
 /// the receiver.
@@ -132,3 +180,5 @@ typedef NS_OPTIONS(unsigned int, GTEnumeratorOptions) {
 - (NSUInteger)countRemainingObjects:(NSError **)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

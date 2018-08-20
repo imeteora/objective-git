@@ -11,6 +11,8 @@
 @class GTRepository;
 @class GTFilterSource;
 
+NS_ASSUME_NONNULL_BEGIN
+
 /// The error domain for errors originating from GTFilter.
 extern NSString * const GTFilterErrorDomain;
 
@@ -32,28 +34,32 @@ extern const NSInteger GTFilterErrorNameAlreadyRegistered;
 
 /// The check block. Determines whether the `applyBlock` should be run for given
 /// source.
-@property (nonatomic, copy) BOOL (^checkBlock)(void **payload, GTFilterSource *source, const char **attr_values);
+@property (nonatomic, copy) BOOL (^checkBlock)(void * _Null_unspecified * _Null_unspecified payload, GTFilterSource *source,  const char * _Null_unspecified * _Null_unspecified attr_values);
 
 /// The cleanup block. Called after the `applyBlock` to given the filter a
 /// chance to clean up the `payload`.
 @property (nonatomic, copy) void (^cleanupBlock)(void *payload);
 
-/// Initializes the object with the given name and attributes.
+- (instancetype)init NS_UNAVAILABLE;
+
+/// Initializes the object with the given name and attributes. Designated initializer.
 ///
 /// name       - The name for the filter. Cannot be nil.
 /// attributes - The attributes to which this filter applies. May be nil.
 /// applyBlock - The block to use to apply the filter. Cannot be nil.
 ///
 /// Returns the initialized object.
-- (id)initWithName:(NSString *)name attributes:(NSString *)attributes applyBlock:(NSData * (^)(void **payload, NSData *from, GTFilterSource *source, BOOL *applied))applyBlock;
+- (instancetype _Nullable)initWithName:(NSString *)name attributes:(NSString * _Nullable)attributes applyBlock:(NSData * (^)(void * _Null_unspecified * _Null_unspecified payload, NSData *from, GTFilterSource *source, BOOL *applied))applyBlock NS_DESIGNATED_INITIALIZER;
 
 /// Look up a filter based on its name.
 ///
 /// Note that this will only find filters registered through
 /// -registerWithName:priority:error:.
 ///
+/// name - The name of the filter to retrieve. Must not be nil.
+///
 /// Returns the filter, or nil if none was found.
-+ (GTFilter *)filterForName:(NSString *)name;
++ (GTFilter * _Nullable)filterForName:(NSString *)name;
 
 /// Registers the filter with the given priority.
 ///
@@ -73,3 +79,5 @@ extern const NSInteger GTFilterErrorNameAlreadyRegistered;
 - (BOOL)unregister:(NSError **)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

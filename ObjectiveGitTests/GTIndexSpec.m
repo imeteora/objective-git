@@ -6,9 +6,9 @@
 //  Copyright (c) 2013 GitHub, Inc. All rights reserved.
 //
 
-#import <Nimble/Nimble.h>
-#import <ObjectiveGit/ObjectiveGit.h>
-#import <Quick/Quick.h>
+@import ObjectiveGit;
+@import Nimble;
+@import Quick;
 
 #import "QuickSpec+GTFixtures.h"
 
@@ -53,8 +53,8 @@ it(@"should write to the repository and return a tree", ^{
 it(@"should write to a specific repository and return a tree", ^{
 	GTRepository *repository = self.bareFixtureRepository;
 	NSArray *branches = [repository branches:NULL];
-	GTCommit *masterCommit = [branches[0] targetCommitAndReturnError:NULL];
-	GTCommit *packedCommit = [branches[1] targetCommitAndReturnError:NULL];
+	GTCommit *masterCommit = [branches[0] targetCommitWithError:NULL];
+	GTCommit *packedCommit = [branches[1] targetCommitWithError:NULL];
 
 	expect(masterCommit).notTo(beNil());
 	expect(packedCommit).notTo(beNil());
@@ -92,7 +92,7 @@ it(@"should add the contents of a tree", ^{
 		if (treeEntry.type == GTObjectTypeBlob) {
 			NSString *path = [root stringByAppendingString:treeEntry.name];
 
-			GTIndexEntry *indexEntry = [memoryIndex entryWithName:path];
+			GTIndexEntry *indexEntry = [memoryIndex entryWithPath:path];
 			expect(indexEntry).notTo(beNil());
 		}
 
@@ -202,7 +202,7 @@ describe(@"adding files", ^{
 
 	NSDictionary *renamedOptions = @{ GTRepositoryStatusOptionsFlagsKey: @(GTRepositoryStatusFlagsIncludeIgnored | GTRepositoryStatusFlagsIncludeUntracked | GTRepositoryStatusFlagsRecurseUntrackedDirectories | GTRepositoryStatusFlagsRenamesHeadToIndex | GTRepositoryStatusFlagsIncludeUnmodified) };
 
-	BOOL (^fileStatusEqualsExpected)(NSString *filename, GTStatusDeltaStatus headToIndexStatus, GTStatusDeltaStatus indexToWorkingDirectoryStatus) = ^(NSString *filename, GTStatusDeltaStatus headToIndexStatus, GTStatusDeltaStatus indexToWorkingDirectoryStatus) {
+	BOOL (^fileStatusEqualsExpected)(NSString *filename, GTDeltaType headToIndexStatus, GTDeltaType indexToWorkingDirectoryStatus) = ^(NSString *filename, GTDeltaType headToIndexStatus, GTDeltaType indexToWorkingDirectoryStatus) {
 		return [index.repository enumerateFileStatusWithOptions:renamedOptions error:NULL usingBlock:^(GTStatusDelta *headToIndex, GTStatusDelta *indexToWorkingDirectory, BOOL *stop) {
 			if (![headToIndex.newFile.path isEqualToString:filename]) return;
 			expect(@(headToIndex.status)).to(equal(@(headToIndexStatus)));
@@ -227,52 +227,104 @@ describe(@"adding files", ^{
 		renamedFileURL = [NSURL fileURLWithPath:newPath isDirectory:NO];
 	});
 
+	it(@"should add all files from the current file system to the index", ^{
+		NSData *currentFileContent = [[NSFileManager defaultManager] contentsAtPath:fileURL.path];
+		expect(currentFileContent).notTo(beNil());
+		NSString *currentFileString = [[NSString alloc] initWithData:currentFileContent encoding:NSUTF8StringEncoding];
+		currentFileString = [currentFileString stringByAppendingString:@"I would like to append this to the file"];
+		currentFileContent = [currentFileString dataUsingEncoding:NSUTF8StringEncoding];
+		expect(@([[NSFileManager defaultManager] createFileAtPath:fileURL.path contents:currentFileContent attributes:nil])).to(beTruthy());
+
+		NSString *newFileContent = @"This is a new file \n1 2 3";
+		NSData *newFileData = [newFileContent dataUsingEncoding:NSUTF8StringEncoding];
+		expect(newFileData).notTo(beNil());
+		expect(@([[NSFileManager defaultManager] createFileAtPath:renamedFileURL.path contents:newFileData attributes:nil])).to(beTruthy());
+
+		GTIndexEntry *entry = [index entryWithPath:[filename decomposedStringWithCanonicalMapping]];
+		expect(@(fileStatusEqualsExpected(entry.path, GTDeltaTypeUnmodified, GTDeltaTypeModified))).to(beTruthy());
+		entry = [index entryWithPath:[renamedFilename decomposedStringWithCanonicalMapping]];
+		expect(@(fileStatusEqualsExpected(entry.path, GTDeltaTypeUnmodified, GTDeltaTypeUntracked))).to(beTruthy());
+
+		expect(@([index addAll:NULL])).to(beTruthy());
+		expect(@([index write:NULL])).to(beTruthy());
+
+		entry = [index entryWithPath:[filename decomposedStringWithCanonicalMapping]];
+		expect(@(fileStatusEqualsExpected(entry.path, GTDeltaTypeModified, GTDeltaTypeUnmodified))).to(beTruthy());
+		entry = [index entryWithPath:[renamedFilename decomposedStringWithCanonicalMapping]];
+		expect(@(fileStatusEqualsExpected(entry.path, GTDeltaTypeAdded, GTDeltaTypeUnmodified))).to(beTruthy());
+	});
+
 	it(@"it preserves decomposed Unicode in index paths with precomposeunicode disabled", ^{
 		NSString *decomposedFilename = [filename decomposedStringWithCanonicalMapping];
-		GTIndexEntry *entry = [index entryWithName:decomposedFilename error:NULL];
-		expect(@(fileStatusEqualsExpected(entry.path, GTStatusDeltaStatusUnmodified, GTStatusDeltaStatusUnmodified))).to(beTruthy());
+		GTIndexEntry *entry = [index entryWithPath:decomposedFilename error:NULL];
+		expect(@(fileStatusEqualsExpected(entry.path, GTDeltaTypeUnmodified, GTDeltaTypeUnmodified))).to(beTruthy());
 
 		expect(@([[NSFileManager defaultManager] moveItemAtURL:fileURL toURL:renamedFileURL error:NULL])).to(beTruthy());
 
-		entry = [index entryWithName:decomposedFilename error:NULL];
-		expect(@(fileStatusEqualsExpected(entry.path, GTStatusDeltaStatusUnmodified, GTStatusDeltaStatusDeleted))).to(beTruthy());
+		entry = [index entryWithPath:decomposedFilename error:NULL];
+		expect(@(fileStatusEqualsExpected(entry.path, GTDeltaTypeUnmodified, GTDeltaTypeDeleted))).to(beTruthy());
 
 		[index removeFile:filename error:NULL];
 		[index addFile:renamedFilename error:NULL];
 		[index write:NULL];
 
-		entry = [index entryWithName:[renamedFilename decomposedStringWithCanonicalMapping] error:NULL];
-		expect(@(fileStatusEqualsExpected(entry.path, GTStatusDeltaStatusRenamed, GTStatusDeltaStatusUnmodified))).to(beTruthy());
+		entry = [index entryWithPath:[renamedFilename decomposedStringWithCanonicalMapping] error:NULL];
+		expect(@(fileStatusEqualsExpected(entry.path, GTDeltaTypeRenamed, GTDeltaTypeUnmodified))).to(beTruthy());
 	});
 
 	it(@"it preserves precomposed Unicode in index paths with precomposeunicode enabled", ^{
-		GTIndexEntry *fileEntry = [index entryWithName:[filename decomposedStringWithCanonicalMapping] error:NULL];
+		GTIndexEntry *fileEntry = [index entryWithPath:[filename decomposedStringWithCanonicalMapping] error:NULL];
 		expect(fileEntry).notTo(beNil());
-		expect(@(fileStatusEqualsExpected(fileEntry.path, GTStatusDeltaStatusUnmodified, GTStatusDeltaStatusUnmodified))).to(beTruthy());
+		expect(@(fileStatusEqualsExpected(fileEntry.path, GTDeltaTypeUnmodified, GTDeltaTypeUnmodified))).to(beTruthy());
 
 		[configuration setBool:true forKey:@"core.precomposeunicode"];
 		expect(@([configuration boolForKey:@"core.precomposeunicode"])).to(beTruthy());
 
-		GTIndexEntry *decomposedFileEntry = [index entryWithName:[filename decomposedStringWithCanonicalMapping] error:NULL];
+		GTIndexEntry *decomposedFileEntry = [index entryWithPath:[filename decomposedStringWithCanonicalMapping] error:NULL];
 		expect(decomposedFileEntry).notTo(beNil());
-		expect(@(fileStatusEqualsExpected(decomposedFileEntry.path, GTStatusDeltaStatusUnmodified, GTStatusDeltaStatusDeleted))).to(beTruthy());
+		expect(@(fileStatusEqualsExpected(decomposedFileEntry.path, GTDeltaTypeUnmodified, GTDeltaTypeDeleted))).to(beTruthy());
 
 		expect(@([[NSFileManager defaultManager] moveItemAtURL:fileURL toURL:renamedFileURL error:NULL])).to(beTruthy());
 
-		GTIndexEntry *precomposedFileEntry = [index entryWithName:filename error:NULL];
+		GTIndexEntry *precomposedFileEntry = [index entryWithPath:filename error:NULL];
 		expect(precomposedFileEntry).to(beNil());
 
-		decomposedFileEntry = [index entryWithName:[filename decomposedStringWithCanonicalMapping] error:NULL];
+		decomposedFileEntry = [index entryWithPath:[filename decomposedStringWithCanonicalMapping] error:NULL];
 		expect(decomposedFileEntry).notTo(beNil());
-		expect(@(fileStatusEqualsExpected(decomposedFileEntry.path, GTStatusDeltaStatusUnmodified, GTStatusDeltaStatusDeleted))).to(beTruthy());
+		expect(@(fileStatusEqualsExpected(decomposedFileEntry.path, GTDeltaTypeUnmodified, GTDeltaTypeDeleted))).to(beTruthy());
 
 		[index removeFile:filename error:NULL];
 		[index addFile:renamedFilename error:NULL];
 		[index write:NULL];
 
-		GTIndexEntry *precomposedRenamedFileEntry = [index entryWithName:renamedFilename error:NULL];
+		GTIndexEntry *precomposedRenamedFileEntry = [index entryWithPath:renamedFilename error:NULL];
 		expect(precomposedRenamedFileEntry).notTo(beNil());
-		expect(@(fileStatusEqualsExpected(precomposedFileEntry.path, GTStatusDeltaStatusRenamed, GTStatusDeltaStatusUntracked))).to(beTruthy());
+		expect(@(fileStatusEqualsExpected(precomposedFileEntry.path, GTDeltaTypeRenamed, GTDeltaTypeUntracked))).to(beTruthy());
+	});
+});
+
+describe(@"adding data", ^{
+	__block GTRepository *repo;
+	__block GTIndex *index;
+	__block NSError *error;
+	
+	beforeEach(^{
+		error = nil;
+		repo = self.testUnicodeFixtureRepository;
+		// Not sure why but it doesn't work with an in memory index
+		// index = [GTIndex inMemoryIndexWithRepository:repo error:&error];
+		index = [repo indexWithError:&error];
+		expect(error).to(beNil());
+	});
+	
+	it(@"should store data at given path", ^{
+		NSData *data = [NSData dataWithBytes:"foo" length:4];
+		[index addData:data withPath:@"bar/foo" error:&error];
+		expect(error).to(beNil());
+		
+		GTIndexEntry *entry = [index entryWithPath:@"bar/foo" error:&error];
+		expect(entry).notTo(beNil());
+		expect(error).to(beNil());
 	});
 });
 

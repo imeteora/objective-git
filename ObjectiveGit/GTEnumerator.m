@@ -48,7 +48,16 @@
 
 #pragma mark Lifecycle
 
-- (id)initWithRepository:(GTRepository *)repo error:(NSError **)error {
+- (instancetype)init {
+	NSAssert(NO, @"Call to an unavailable initializer.");
+	return nil;
+}
+
+- (git_revwalk *)git_revwalk {
+	return self.walk;
+}
+
+- (instancetype)initWithRepository:(GTRepository *)repo error:(NSError **)error {
 	NSParameterAssert(repo != nil);
 
 	self = [super init];
@@ -102,6 +111,26 @@
 	return YES;
 }
 
+- (BOOL)pushHEAD:(NSError **)error {
+	int gitError = git_revwalk_push_head(self.walk);
+	if (gitError != GIT_OK) {
+		if (error != NULL) *error = [NSError git_errorFor:gitError description:@"Failed to push HEAD onto rev walker."];
+		return NO;
+	}
+	return YES;
+}
+
+- (BOOL)pushReferenceName:(NSString *)refName error:(NSError **)error {
+	NSParameterAssert(refName != nil);
+
+	int gitError = git_revwalk_push_ref(self.walk, refName.UTF8String);
+	if (gitError != 0) {
+		if (error) *error = [NSError git_errorFor:gitError description:@"Failed to push reference %@", refName];
+		return NO;
+	}
+	return YES;
+}
+
 - (BOOL)hideSHA:(NSString *)sha error:(NSError **)error {
 	NSParameterAssert(sha != nil);
 
@@ -122,10 +151,30 @@
 
 	int gitError = git_revwalk_hide_glob(self.walk, refGlob.UTF8String);
 	if (gitError != GIT_OK) {
-		if (error != NULL) *error = [NSError git_errorFor:gitError description:@"Failed to push glob %@ onto rev walker.", refGlob];
+		if (error != NULL) *error = [NSError git_errorFor:gitError description:@"Failed to hide glob %@ in rev walker.", refGlob];
 		return NO;
 	}
 	
+	return YES;
+}
+
+- (BOOL)hideHEAD:(NSError **)error {
+	int gitError = git_revwalk_hide_head(self.walk);
+	if (gitError != GIT_OK) {
+		if (error != NULL) *error = [NSError git_errorFor:gitError description:@"Failed to hide HEAD onto rev walker."];
+		return NO;
+	}
+	return YES;
+}
+
+- (BOOL)hideReferenceName:(NSString *)refName error:(NSError **)error {
+	NSParameterAssert(refName != nil);
+
+	int gitError = git_revwalk_hide_ref(self.walk, refName.UTF8String);
+	if (gitError != 0) {
+		if (error) *error = [NSError git_errorFor:gitError description:@"Failed to hide reference %@", refName];
+		return NO;
+	}
 	return YES;
 }
 
@@ -140,16 +189,34 @@
 
 #pragma mark Enumerating
 
-- (GTCommit *)nextObjectWithSuccess:(BOOL *)success error:(NSError **)error {
+- (GTOID *)nextOIDWithSuccess:(BOOL *)success error:(NSError **)error {
 	git_oid oid;
+
 	int gitError = git_revwalk_next(&oid, self.walk);
 	if (gitError == GIT_ITEROVER) {
 		if (success != NULL) *success = YES;
 		return nil;
 	}
+	if (gitError != GIT_OK) {
+		if (success != NULL) *success = NO;
+		if (error != NULL) *error = [NSError git_errorFor:gitError description:@"Enumeration failed"];
+		return nil;
+	}
+
+	if (success != NULL) *success = YES;
+	return [GTOID oidWithGitOid:&oid];
+}
+
+- (GTCommit *)nextObjectWithSuccess:(BOOL *)success error:(NSError **)error {
+	GTOID *oid = [self nextOIDWithSuccess:success error:error];
+	if (oid == nil) {
+		// We don't care whether the iteration completed, or an error occurred,
+		// there's nothing to lookup.
+		return nil;
+	}
 	
 	// Ignore error if we can't lookup object and just return nil.
-	GTCommit *commit = [self.repository lookUpObjectByGitOid:&oid objectType:GTObjectTypeCommit error:error];
+	GTCommit *commit = [self.repository lookUpObjectByOID:oid objectType:GTObjectTypeCommit error:error];
 	if (success != NULL) *success = (commit != nil);
 	return commit;
 }
@@ -192,7 +259,8 @@
 #pragma mark NSEnumerator
 
 - (NSArray *)allObjects {
-	return [self allObjectsWithError:NULL];
+	NSArray *objects = [self allObjectsWithError:NULL];
+	return objects ? objects : [NSArray array];
 }
 
 - (id)nextObject {

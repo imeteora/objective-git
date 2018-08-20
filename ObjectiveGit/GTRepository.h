@@ -34,6 +34,7 @@
 #import "GTObject.h"
 #import "GTReference.h"
 #import "GTFilterList.h"
+#import "GTCheckoutOptions.h"
 #import "git2/checkout.h"
 #import "git2/repository.h"
 #import "git2/transport.h"
@@ -51,36 +52,9 @@
 @class GTTag;
 @class GTTree;
 @class GTRemote;
+@class GTNote;
 
-/// Checkout strategies used by the various -checkout... methods
-/// See git_checkout_strategy_t
-typedef NS_OPTIONS(NSInteger, GTCheckoutStrategyType) {
-	GTCheckoutStrategyNone = GIT_CHECKOUT_NONE,
-	GTCheckoutStrategySafe = GIT_CHECKOUT_SAFE,
-	GTCheckoutStrategySafeCreate = GIT_CHECKOUT_SAFE_CREATE,
-	GTCheckoutStrategyForce = GIT_CHECKOUT_FORCE,
-	GTCheckoutStrategyAllowConflicts = GIT_CHECKOUT_ALLOW_CONFLICTS,
-	GTCheckoutStrategyRemoveUntracked = GIT_CHECKOUT_REMOVE_UNTRACKED,
-	GTCheckoutStrategyRemoveIgnored = GIT_CHECKOUT_REMOVE_IGNORED,
-	GTCheckoutStrategyUpdateOnly = GIT_CHECKOUT_UPDATE_ONLY,
-	GTCheckoutStrategyDontUpdateIndex = GIT_CHECKOUT_DONT_UPDATE_INDEX,
-	GTCheckoutStrategyNoRefresh = GIT_CHECKOUT_NO_REFRESH,
-	GTCheckoutStrategyDisablePathspecMatch = GIT_CHECKOUT_DISABLE_PATHSPEC_MATCH,
-	GTCheckoutStrategySkipLockedDirectories = GIT_CHECKOUT_SKIP_LOCKED_DIRECTORIES,
-};
-
-/// Checkout notification flags used by the various -checkout... methods
-/// See git_checkout_notify_t
-typedef NS_OPTIONS(NSInteger, GTCheckoutNotifyFlags) {
-	GTCheckoutNotifyNone = GIT_CHECKOUT_NOTIFY_NONE,
-	GTCheckoutNotifyConflict = GIT_CHECKOUT_NOTIFY_CONFLICT,
-	GTCheckoutNotifyDirty = GIT_CHECKOUT_NOTIFY_DIRTY,
-	GTCheckoutNotifyUpdated = GIT_CHECKOUT_NOTIFY_UPDATED,
-	GTCheckoutNotifyUntracked = GIT_CHECKOUT_NOTIFY_UNTRACKED,
-	GTCheckoutNotifyIgnored = GIT_CHECKOUT_NOTIFY_IGNORED,
-
-	GTCheckoutNotifyAll = GIT_CHECKOUT_NOTIFY_ALL,
-};
+NS_ASSUME_NONNULL_BEGIN
 
 /// Transport flags sent as options to +cloneFromURL... method
 typedef NS_OPTIONS(NSInteger, GTTransportFlags) {
@@ -97,7 +71,10 @@ extern NSString * const GTRepositoryCloneOptionsBare;
 
 /// An `NSNumber` wrapped `BOOL`, if NO, don't checkout the remote HEAD.
 /// Default value is `YES`.
-extern NSString * const GTRepositoryCloneOptionsCheckout;
+extern NSString * const GTRepositoryCloneOptionsPerformCheckout;
+
+/// A `GTCheckoutOptions` object describing how to perform the checkout.
+extern NSString * const GTRepositoryCloneOptionsCheckoutOptions;
 
 /// A `GTCredentialProvider`, that will be used to authenticate against the
 /// remote.
@@ -107,7 +84,17 @@ extern NSString * const GTRepositoryCloneOptionsCredentialProvider;
 extern NSString * const GTRepositoryCloneOptionsCloneLocal;
 
 /// A NSURL pointing to a local file that contains PEM-encoded certificate chain.
-extern NSString *const GTRepositoryCloneOptionsServerCertificateURL;
+extern NSString * const GTRepositoryCloneOptionsServerCertificateURL;
+
+/// Repository extended open control flags for
+/// +initWithURL:flags:ceilingDirs:error:.
+///
+/// See respository.h for documentation of each individual flag.
+typedef NS_OPTIONS(NSInteger, GTRepositoryOpenFlags) {
+	GTRepositoryOpenNoSearch = GIT_REPOSITORY_OPEN_NO_SEARCH,
+	GTRepositoryOpenCrossFS = GIT_REPOSITORY_OPEN_CROSS_FS,
+	GTRepositoryOpenBare = GIT_REPOSITORY_OPEN_BARE,
+};
 
 /// Initialization flags associated with `GTRepositoryInitOptionsFlags` for
 /// +initializeEmptyRepositoryAtFileURL:options:error:.
@@ -149,12 +136,27 @@ extern NSString * const GTRepositoryInitOptionsInitialHEAD;
 /// initialization.
 extern NSString * const GTRepositoryInitOptionsOriginURLString;
 
+/// The possible states for the repository to be in, based on the current ongoing operation.
+typedef NS_ENUM(NSInteger, GTRepositoryStateType) {
+	GTRepositoryStateNone = GIT_REPOSITORY_STATE_NONE,
+	GTRepositoryStateMerge = GIT_REPOSITORY_STATE_MERGE,
+	GTRepositoryStateRevert = GIT_REPOSITORY_STATE_REVERT,
+	GTRepositoryStateCherryPick = GIT_REPOSITORY_STATE_CHERRYPICK,
+	GTRepositoryStateBisect = GIT_REPOSITORY_STATE_BISECT,
+	GTRepositoryStateRebase = GIT_REPOSITORY_STATE_REBASE,
+	GTRepositoryStateRebaseInteractive = GIT_REPOSITORY_STATE_REBASE_INTERACTIVE,
+	GTRepositoryStateRebaseMerge = GIT_REPOSITORY_STATE_REBASE_MERGE,
+	GTRepositoryStateApplyMailbox = GIT_REPOSITORY_STATE_APPLY_MAILBOX,
+	GTRepositoryStateApplyMailboxOrRebase = GIT_REPOSITORY_STATE_APPLY_MAILBOX_OR_REBASE,
+};
+
 @interface GTRepository : NSObject
 
 /// The file URL for the repository's working directory.
-@property (nonatomic, readonly, strong) NSURL *fileURL;
+/// Returns nil for a bare repository.
+@property (nonatomic, readonly, strong) NSURL * _Nullable fileURL;
 /// The file URL for the repository's .git directory.
-@property (nonatomic, readonly, strong) NSURL *gitDirectoryURL;
+@property (nonatomic, readonly, strong) NSURL * _Nullable gitDirectoryURL;
 
 /// Is this a bare repository (one without a working directory)?
 @property (nonatomic, readonly, getter = isBare) BOOL bare;
@@ -176,50 +178,77 @@ extern NSString * const GTRepositoryInitOptionsOriginURLString;
 /// error   - The error if one occurs.
 ///
 /// Returns the initialized repository, or nil if an error occurred.
-+ (instancetype)initializeEmptyRepositoryAtFileURL:(NSURL *)fileURL options:(NSDictionary *)options error:(NSError **)error;
++ (instancetype _Nullable)initializeEmptyRepositoryAtFileURL:(NSURL *)fileURL options:(NSDictionary * _Nullable)options error:(NSError **)error;
 
-+ (id)repositoryWithURL:(NSURL *)localFileURL error:(NSError **)error;
-- (id)initWithURL:(NSURL *)localFileURL error:(NSError **)error;
+/// Convenience class initializer which uses the default options.
+///
+/// localFileURL - The file URL for the new repository. Cannot be nil.
+/// error        - The error if one occurs.
+///
+/// Returns the initialized repository, or nil if an error occurred.
++ (instancetype _Nullable)repositoryWithURL:(NSURL *)localFileURL error:(NSError **)error;
 
-/// Initializes the receiver to wrap the given repository object.
+/// Convenience initializer which uses the default options.
+///
+/// localFileURL - The file URL for the new repository. Cannot be nil.
+/// error        - The error if one occurs.
+///
+/// Returns the initialized repository, or nil if an error occurred.
+- (instancetype _Nullable)initWithURL:(NSURL *)localFileURL error:(NSError **)error;
+
+/// Convenience initializer to find and open a repository with extended controls.
+///
+/// localFileURL    - The file URL for the new repository. Cannot be nil.
+/// flags           - A combination of the `GTRepositoryOpenFlags` flags.
+/// ceilingDirURLs  - An array of URLs at which the search for a containing
+///                   repository should terminate. Can be NULL.
+/// error           - The error if one occurs.
+///
+/// Returns the initialized repository, or nil if an error occurred.
+- (instancetype _Nullable)initWithURL:(NSURL *)localFileURL flags:(NSInteger)flags ceilingDirs:(NSArray<NSURL *> * _Nullable)ceilingDirURLs error:(NSError **)error;
+
+- (instancetype)init NS_UNAVAILABLE;
+
+/// Initializes the receiver to wrap the given repository object. Designated initializer.
 ///
 /// repository - The repository to wrap. The receiver will take over memory
 ///              management of this object, so it must not be freed elsewhere
 ///              after this method is invoked. This must not be nil.
 ///
-/// Returns an initialized GTRepository.
-- (id)initWithGitRepository:(git_repository *)repository;
+/// Returns an initialized GTRepository, or nil if an erroe occurred.
+- (instancetype _Nullable)initWithGitRepository:(git_repository *)repository NS_DESIGNATED_INITIALIZER;
 
 /// The underlying `git_repository` object.
 - (git_repository *)git_repository __attribute__((objc_returns_inner_pointer));
 
 /// Clone a repository
 ///
-/// originURL             - The URL to clone from.
-/// workdirURL            - A URL to the desired working directory on the local machine.
+/// originURL             - The URL to clone from. Must not be nil.
+/// workdirURL            - A URL to the desired working directory on the local machine. Must not be nil.
 /// options               - A dictionary consisting of the options:
 ///                         `GTRepositoryCloneOptionsTransportFlags`,
 ///                         `GTRepositoryCloneOptionsBare`,
-///                         `GTRepositoryCloneOptionsCheckout`,
+///                         `GTRepositoryCloneOptionsPerformCheckout`,
+///                         `GTRepositoryCloneOptionsCheckoutOptions`,
 ///                         `GTRepositoryCloneOptionsCredentialProvider`,
 ///                         `GTRepositoryCloneOptionsCloneLocal`,
 ///                         `GTRepositoryCloneOptionsServerCertificateURL`
 /// error                 - A pointer to fill in case of trouble.
 /// transferProgressBlock - This block is called with network transfer updates.
-/// checkoutProgressBlock - This block is called with checkout updates
-///                         (if `GTRepositoryCloneOptionsCheckout` is YES).
+///                         May be NULL.
+///                         May be NULL.
 ///
 /// returns nil (and fills the error parameter) if an error occurred, or a GTRepository object if successful.
-+ (id)cloneFromURL:(NSURL *)originURL toWorkingDirectory:(NSURL *)workdirURL options:(NSDictionary *)options error:(NSError **)error transferProgressBlock:(void (^)(const git_transfer_progress *, BOOL *stop))transferProgressBlock checkoutProgressBlock:(void (^)(NSString *path, NSUInteger completedSteps, NSUInteger totalSteps))checkoutProgressBlock;
++ (instancetype _Nullable)cloneFromURL:(NSURL *)originURL toWorkingDirectory:(NSURL *)workdirURL options:(NSDictionary * _Nullable)options error:(NSError **)error transferProgressBlock:(void (^ _Nullable)(const git_transfer_progress *, BOOL *stop))transferProgressBlock;
 
 /// Lookup objects in the repo by oid or sha1
-- (id)lookUpObjectByOID:(GTOID *)oid objectType:(GTObjectType)type error:(NSError **)error;
-- (id)lookUpObjectByOID:(GTOID *)oid error:(NSError **)error;
-- (id)lookUpObjectBySHA:(NSString *)sha objectType:(GTObjectType)type error:(NSError **)error;
-- (id)lookUpObjectBySHA:(NSString *)sha error:(NSError **)error;
+- (id _Nullable)lookUpObjectByOID:(GTOID *)oid objectType:(GTObjectType)type error:(NSError **)error;
+- (id _Nullable)lookUpObjectByOID:(GTOID *)oid error:(NSError **)error;
+- (id _Nullable)lookUpObjectBySHA:(NSString *)sha objectType:(GTObjectType)type error:(NSError **)error;
+- (id _Nullable)lookUpObjectBySHA:(NSString *)sha error:(NSError **)error;
 
 /// Lookup an object in the repo using a revparse spec
-- (id)lookUpObjectByRevParse:(NSString *)spec error:(NSError **)error;
+- (id _Nullable)lookUpObjectByRevParse:(NSString *)spec error:(NSError **)error;
 
 /// Finds the branch with the given name and type.
 ///
@@ -233,7 +262,7 @@ extern NSString * const GTRepositoryInitOptionsOriginURLString;
 ///
 /// Returns the matching branch, or nil if no match was found or an error occurs.
 /// The latter two cases can be distinguished by checking `success`.
-- (GTBranch *)lookUpBranchWithName:(NSString *)branchName type:(GTBranchType)branchType success:(BOOL *)success error:(NSError **)error;
+- (GTBranch * _Nullable)lookUpBranchWithName:(NSString *)branchName type:(GTBranchType)branchType success:(BOOL * _Nullable)success error:(NSError **)error;
 
 /// List all references in the repository
 ///
@@ -242,31 +271,81 @@ extern NSString * const GTRepositoryInitOptionsOriginURLString;
 ///
 /// returns an array of NSStrings holding the names of the references
 /// returns nil if an error occurred and fills the error parameter
-- (NSArray *)referenceNamesWithError:(NSError **)error;
+- (NSArray<NSString *> * _Nullable)referenceNamesWithError:(NSError **)error;
 
-- (GTReference *)headReferenceWithError:(NSError **)error;
+/// Get the HEAD reference.
+///
+/// error - If not NULL, set to any error that occurs.
+///
+/// Returns a GTReference or nil if an error occurs.
+- (GTReference * _Nullable)headReferenceWithError:(NSError **)error;
 
-- (NSArray *)localBranchesWithError:(NSError **)error;
-- (NSArray *)remoteBranchesWithError:(NSError **)error;
-- (NSArray *)branchesWithPrefix:(NSString *)prefix error:(NSError **)error;
+/// Move HEAD reference safely, since deleting and recreating HEAD is always wrong.
+///
+/// reference - The new target reference for HEAD.
+/// error     - If not NULL, set to any error that occurs.
+///
+/// Returns NO if an error occurs.
+- (BOOL)moveHEADToReference:(GTReference *)reference error:(NSError **)error;
+
+/// Move HEAD reference safely, since deleting and recreating HEAD is always wrong.
+///
+/// commit - The commit which HEAD should point to.
+/// error  - If not NULL, set to any error that occurs.
+///
+/// Returns NO if an error occurs.
+- (BOOL)moveHEADToCommit:(GTCommit *)commit error:(NSError **)error;
+
+/// Get the local branches.
+///
+/// error - If not NULL, set to any error that occurs.
+///
+/// Returns an array of GTBranches or nil if an error occurs.
+- (NSArray<GTBranch *> * _Nullable)localBranchesWithError:(NSError **)error;
+
+/// Get the remote branches.
+///
+/// error - If not NULL, set to any error that occurs.
+///
+/// Returns an array of GTBranches or nil if an error occurs.
+- (NSArray<GTBranch *> * _Nullable)remoteBranchesWithError:(NSError **)error;
+
+/// Get branches with names sharing a given prefix.
+///
+/// prefix - The prefix to use for filtering. Must not be nil.
+/// error  - If not NULL, set to any error that occurs.
+///
+/// Returns an array of GTBranches or nil if an error occurs.
+- (NSArray<GTBranch *> * _Nullable)branchesWithPrefix:(NSString *)prefix error:(NSError **)error;
 
 /// Get the local and remote branches and merge them together by combining local
 /// branches with their remote branch, if they have one.
 ///
-/// error - The error if one occurs.
+/// error - If not NULL, set to any error that occurs.
 ///
-/// Returns the branches or nil if an error occurs.
-- (NSArray *)branches:(NSError **)error;
+/// Returns an array of GTBranches or nil if an error occurs.
+- (NSArray<GTBranch *> * _Nullable)branches:(NSError **)error;
 
 /// List all remotes in the repository
 ///
 /// error - will be filled if an error occurs
 ///
 /// returns an array of NSStrings holding the names of the remotes, or nil if an error occurred
-- (NSArray *)remoteNamesWithError:(NSError **)error;
+- (NSArray<NSString *> * _Nullable)remoteNamesWithError:(NSError **)error;
 
-/// Convenience method to return all tags in the repository
-- (NSArray *)allTagsWithError:(NSError **)error;
+/// Delete the given remote by name
+///
+/// error - If not NULL, set to any error that occurs.
+///
+/// returns YES if the deletion succeeded, otherwise NO.
+- (BOOL)deleteRemoteNamed:(NSString *)remoteName error:(NSError **)error;
+
+/// Get all tags in the repository.
+///
+/// error - If not NULL, set to any error that occurs.
+///
+/// Returns an array of GTTag or nil if an error occurs.
+- (NSArray<GTTag *> * _Nullable)allTagsWithError:(NSError **)error;
 
 /// Count all commits in the current branch (HEAD)
 ///
@@ -279,55 +358,50 @@ extern NSString * const GTRepositoryInitOptionsOriginURLString;
 ///
 /// name      - The full name for the new reference. This must not be nil.
 /// targetOID - The OID that the new ref should point to. This must not be nil.
-/// signature - A signature for the committer creating this ref, used for
-///             creating a reflog entry. This may be nil.
 /// message   - A message to use when creating the reflog entry for this action.
 ///             This may be nil.
 /// error     - If not NULL, set to any error that occurs.
 ///
 /// Returns the created ref, or nil if an error occurred.
-- (GTReference *)createReferenceNamed:(NSString *)name fromOID:(GTOID *)targetOID committer:(GTSignature *)signature message:(NSString *)message error:(NSError **)error;
+- (GTReference * _Nullable)createReferenceNamed:(NSString *)name fromOID:(GTOID *)targetOID message:(NSString * _Nullable)message error:(NSError **)error;
 
 /// Creates a symbolic reference to another ref.
 ///
 /// name      - The full name for the new reference. This must not be nil.
 /// targetRef - The ref that the new ref should point to. This must not be nil.
-/// signature - A signature for the committer creating this ref, used for
-///             creating a reflog entry. This may be nil.
 /// message   - A message to use when creating the reflog entry for this action.
 ///             This may be nil.
 /// error     - If not NULL, set to any error that occurs.
 ///
 /// Returns the created ref, or nil if an error occurred.
-- (GTReference *)createReferenceNamed:(NSString *)name fromReference:(GTReference *)targetRef committer:(GTSignature *)signature message:(NSString *)message error:(NSError **)error;
+- (GTReference * _Nullable)createReferenceNamed:(NSString *)name fromReference:(GTReference *)targetRef message:(NSString * _Nullable)message error:(NSError **)error;
 
 /// Create a new local branch pointing to the given OID.
 ///
 /// name      - The name for the new branch (e.g., `master`). This must not be
 ///             nil.
 /// targetOID - The OID to create the new branch off. This must not be nil.
-/// signature - A signature for the committer creating this branch, used for
-///             creating a reflog entry. This may be nil.
 /// message   - A message to use when creating the reflog entry for this action.
 ///             This may be nil.
 /// error     - If not NULL, set to any error that occurs.
 ///
 /// Returns the new branch, or nil if an error occurred.
-- (GTBranch *)createBranchNamed:(NSString *)name fromOID:(GTOID *)targetOID committer:(GTSignature *)signature message:(NSString *)message error:(NSError **)error;
+- (GTBranch * _Nullable)createBranchNamed:(NSString *)name fromOID:(GTOID *)targetOID message:(NSString * _Nullable)message error:(NSError **)error;
 
 /// Get the current branch.
 ///
 /// error(out) - will be filled if an error occurs
 ///
 /// returns the current branch or nil if an error occurred.
-- (GTBranch *)currentBranchWithError:(NSError **)error;
+- (GTBranch * _Nullable)currentBranchWithError:(NSError **)error;
 
 /// Find the commits that are on our local branch but not on the remote branch.
 ///
-/// error(out) - will be filled if an error occurs
+/// remoteBranch - The remote branch to use as a reference. Must not be nil.
+/// error(out)   - will be filled if an error occurs
 ///
 /// returns the local commits, an empty array if there is no remote branch, or nil if an error occurred
-- (NSArray *)localCommitsRelativeToRemoteBranch:(GTBranch *)remoteBranch error:(NSError **)error;
+- (NSArray<GTCommit *> * _Nullable)localCommitsRelativeToRemoteBranch:(GTBranch *)remoteBranch error:(NSError **)error;
 
 /// Retrieves git's "prepared message" for the next commit, like the default
 /// message pre-filled when committing after a conflicting merge.
@@ -336,24 +410,14 @@ extern NSString * const GTRepositoryInitOptionsOriginURLString;
 ///
 /// Returns the message from disk, or nil if no prepared message exists or an
 /// error occurred.
-- (NSString *)preparedMessageWithError:(NSError **)error;
+- (NSString * _Nullable)preparedMessageWithError:(NSError **)error;
 
 /// The signature for the user at the current time, based on the repository and
 /// system configs. If the user's name or email have not been set, reasonable
 /// defaults will be used instead. Will never return nil.
 ///
 /// Returns the signature.
-- (GTSignature *)userSignatureForNow;
-
-/// Reloads all cached information about the receiver's submodules.
-///
-/// Existing GTSubmodule objects from this repository will be mutated as part of
-/// this operation.
-///
-/// error - If not NULL, set to any errors that occur.
-///
-/// Returns whether the reload succeeded.
-- (BOOL)reloadSubmodules:(NSError **)error;
+- (GTSignature * _Nullable)userSignatureForNow;
 
 /// Enumerates over all the tracked submodules in the repository.
 ///
@@ -363,7 +427,7 @@ extern NSString * const GTRepositoryInitOptionsOriginURLString;
 ///             `error` will contain the error information. Setting `stop` to YES
 ///             will cause enumeration to stop after the block returns. This must
 ///             not be nil.
-- (void)enumerateSubmodulesRecursively:(BOOL)recursive usingBlock:(void (^)(GTSubmodule *submodule, NSError *error, BOOL *stop))block;
+- (void)enumerateSubmodulesRecursively:(BOOL)recursive usingBlock:(void (^)(GTSubmodule * _Nullable submodule, NSError *error, BOOL *stop))block;
 
 /// Looks up the top-level submodule with the given name. This will not recurse
 /// into submodule repositories.
@@ -373,7 +437,7 @@ extern NSString * const GTRepositoryInitOptionsOriginURLString;
 ///
 /// Returns the first submodule that matches the given name, or nil if an error
 /// occurred locating or instantiating the GTSubmodule.
-- (GTSubmodule *)submoduleWithName:(NSString *)name error:(NSError **)error;
+- (GTSubmodule * _Nullable)submoduleWithName:(NSString *)name error:(NSError **)error;
 
 /// Finds the merge base between the commits pointed at by the given OIDs.
 ///
@@ -382,36 +446,36 @@ extern NSString * const GTRepositoryInitOptionsOriginURLString;
 /// error     - If not NULL, set to any error that occurs.
 ///
 /// Returns the merge base, or nil if none is found or an error occurred.
-- (GTCommit *)mergeBaseBetweenFirstOID:(GTOID *)firstOID secondOID:(GTOID *)secondOID error:(NSError **)error;
+- (GTCommit * _Nullable)mergeBaseBetweenFirstOID:(GTOID *)firstOID secondOID:(GTOID *)secondOID error:(NSError **)error;
 
 /// The object database backing the repository.
 ///
 /// error - The error if one occurred.
 ///
 /// Returns the object database, or nil if an error occurred.
-- (GTObjectDatabase *)objectDatabaseWithError:(NSError **)error;
+- (GTObjectDatabase * _Nullable)objectDatabaseWithError:(NSError **)error;
 
 /// The configuration for the repository.
 ///
 /// error - The error if one occurred.
 ///
 /// Returns the configuration, or nil if an error occurred.
-- (GTConfiguration *)configurationWithError:(NSError **)error;
+- (GTConfiguration * _Nullable)configurationWithError:(NSError **)error;
 
 /// The index for the repository.
 ///
 /// error - The error if one occurred.
 ///
 /// Returns the index, or nil if an error occurred.
-- (GTIndex *)indexWithError:(NSError **)error;
+- (GTIndex * _Nullable)indexWithError:(NSError **)error;
 
 /// Creates a new lightweight tag in this repository.
 ///
 /// name   - Name for the tag; this name is validated
 ///          for consistency. It should also not conflict with an
-///          already existing tag name
+///          already existing tag name. Must not be nil.
 /// target - Object to which this tag points. This object
-///          must belong to this repository.
+///          must belong to this repository. Must not be nil.
 /// error  - Will be filled with a NSError instance on failuer.
 ///          May be NULL.
 ///
@@ -432,7 +496,7 @@ extern NSString * const GTRepositoryInitOptionsOriginURLString;
 ///             May be NULL.
 ///
 /// Returns the object ID of the newly created tag or nil on error.
-- (GTOID *)OIDByCreatingTagNamed:(NSString *)tagName target:(GTObject *)theTarget tagger:(GTSignature *)theTagger message:(NSString *)theMessage error:(NSError **)error;
+- (GTOID * _Nullable)OIDByCreatingTagNamed:(NSString *)tagName target:(GTObject *)theTarget tagger:(GTSignature *)theTagger message:(NSString *)theMessage error:(NSError **)error;
 
 /// Creates an annotated tag in this repo. Existing tags are not overwritten.
 ///
@@ -448,39 +512,44 @@ extern NSString * const GTRepositoryInitOptionsOriginURLString;
 ///             May be NULL.
 ///
 /// Returns the newly created tag or nil on error.
-- (GTTag *)createTagNamed:(NSString *)tagName target:(GTObject *)theTarget tagger:(GTSignature *)theTagger message:(NSString *)theMessage error:(NSError **)error;
+- (GTTag * _Nullable)createTagNamed:(NSString *)tagName target:(GTObject *)theTarget tagger:(GTSignature *)theTagger message:(NSString *)theMessage error:(NSError **)error;
 
 /// Checkout a commit
 ///
-/// targetCommit  - The commit to checkout.
-/// strategy      - The checkout strategy to use.
-/// notifyFlags   - Flags that indicate which notifications should cause `notifyBlock`
-///                 to be called.
+/// targetCommit  - The commit to checkout. Must not be nil.
+/// options       - The checkout options to use. Can be nil.
 /// error         - The error if one occurred. Can be NULL.
-/// notifyBlock   - The block to call back for notification handling. Can be nil.
-/// progressBlock - The block to call back for progress updates. Can be nil.
 ///
 /// Returns YES if operation was successful, NO otherwise
-- (BOOL)checkoutCommit:(GTCommit *)targetCommit strategy:(GTCheckoutStrategyType)strategy notifyFlags:(GTCheckoutNotifyFlags)notifyFlags error:(NSError **)error progressBlock:(void (^)(NSString *path, NSUInteger completedSteps, NSUInteger totalSteps))progressBlock notifyBlock:(int (^)(GTCheckoutNotifyFlags why, NSString *path, GTDiffFile *baseline, GTDiffFile *target, GTDiffFile *workdir))notifyBlock;
+- (BOOL)checkoutCommit:(GTCommit *)targetCommit options:(GTCheckoutOptions * _Nullable)options error:(NSError **)error;
 
 /// Checkout a reference
 ///
-/// targetCommit  - The reference to checkout.
-/// strategy      - The checkout strategy to use.
-/// notifyFlags   - Flags that indicate which notifications should cause `notifyBlock`
-///                 to be called.
-/// error         - The error if one occurred. Can be NULL.
-/// notifyBlock   - The block to call back for notification handling. Can be nil.
-/// progressBlock - The block to call back for progress updates. Can be nil.
+/// targetReference  - The reference to checkout. Must not be nil.
+/// options          - The checkout options to use. Can be nil.
+/// error            - The error if one occurred. Can be NULL.
 ///
 /// Returns YES if operation was successful, NO otherwise
-- (BOOL)checkoutReference:(GTReference *)targetReference strategy:(GTCheckoutStrategyType)strategy notifyFlags:(GTCheckoutNotifyFlags)notifyFlags error:(NSError **)error progressBlock:(void (^)(NSString *path, NSUInteger completedSteps, NSUInteger totalSteps))progressBlock notifyBlock:(int (^)(GTCheckoutNotifyFlags why, NSString *path, GTDiffFile *baseline, GTDiffFile *target, GTDiffFile *workdir))notifyBlock;
+- (BOOL)checkoutReference:(GTReference *)targetReference options:(GTCheckoutOptions * _Nullable)options error:(NSError **)error;
 
-/// Convenience wrapper for checkoutCommit:strategy:notifyFlags:error:notifyBlock:progressBlock without notifications
-- (BOOL)checkoutCommit:(GTCommit *)target strategy:(GTCheckoutStrategyType)strategy error:(NSError **)error progressBlock:(void (^)(NSString *path, NSUInteger completedSteps, NSUInteger totalSteps))progressBlock;
+/// Checkout an index
+///
+/// index   - The index to checkout. Must not be nil.
+/// options - The checkout options to use. Can be nil.
+/// error   - The error if one occurred. Can be NULL.
+///
+/// Returns YES if operation was successful, NO otherwise
+- (BOOL)checkoutIndex:(GTIndex *)index options:(GTCheckoutOptions * _Nullable)options error:(NSError **)error;
 
-/// Convenience wrapper for checkoutReference:strategy:notifyFlags:error:notifyBlock:progressBlock without notifications
-- (BOOL)checkoutReference:(GTReference *)target strategy:(GTCheckoutStrategyType)strategy error:(NSError **)error progressBlock:(void (^)(NSString *path, NSUInteger completedSteps, NSUInteger totalSteps))progressBlock;
+/// Checkout a tree
+///
+/// targetTree    - The tree to checkout.
+/// options       - The checkout options to use. Can be nil.
+/// error         - The error if one occurred. Can be NULL.
+///
+/// Returns YES if operation was successful, NO otherwise
+/// Note: this operation will NOT update HEAD to newly checked out tree.
+- (BOOL)checkoutTree:(GTTree *)targetTree options:(GTCheckoutOptions * _Nullable)options error:(NSError **)error;
 
 /// Flush the gitattributes cache.
 - (void)flushAttributesCache;
@@ -503,6 +572,89 @@ extern NSString * const GTRepositoryInitOptionsOriginURLString;
 /// Returns the loaded filter list, or nil if an error occurs or there are no
 /// filters to apply to the given path. The latter two cases can be
 /// distinguished using the value of `success`.
-- (GTFilterList *)filterListWithPath:(NSString *)path blob:(GTBlob *)blob mode:(GTFilterSourceMode)mode options:(GTFilterListOptions)options success:(BOOL *)success error:(NSError **)error;
+- (GTFilterList * _Nullable)filterListWithPath:(NSString *)path blob:(GTBlob * _Nullable)blob mode:(GTFilterSourceMode)mode options:(GTFilterListOptions)options success:(BOOL * _Nullable)success error:(NSError **)error;
+
+/// Calculates how far ahead/behind the commit represented by `headOID` is,
+/// relative to the commit represented by `baseOID`.
+///
+/// ahead   - Must not be NULL.
+/// behind  - Must not be NULL.
+/// headOID - Must not be nil.
+/// baseOID - Must not be nil.
+/// error   - If not NULL, set to any error that occurs.
+///
+/// Returns whether `ahead` and `behind` were successfully calculated.
+- (BOOL)calculateAhead:(size_t *)ahead behind:(size_t *)behind ofOID:(GTOID *)headOID relativeToOID:(GTOID *)baseOID error:(NSError **)error;
+
+/// Creates an enumerator for walking the unique commits, as determined by a
+/// pushing a starting OID and hiding the relative OID.
+///
+/// fromOID     - The starting OID.
+/// relativeOID - The OID to hide.
+/// error       - The error if one occurred.
+///
+/// Returns the enumerator or nil if an error occurred.
+- (GTEnumerator * _Nullable)enumeratorForUniqueCommitsFromOID:(GTOID *)fromOID relativeToOID:(GTOID *)relativeOID error:(NSError **)error;
+
+/// Determines the status of a git repository--i.e., whether an operation
+/// (merge, cherry-pick, etc) is in progress.
+///
+/// state - A pointer to set the retrieved state. Must not be NULL.
+/// error - The error if one occurred.
+///
+/// Returns YES if operation was successful, NO otherwise
+- (BOOL)calculateState:(GTRepositoryStateType *)state withError:(NSError **)error;
+
+/// Remove all the metadata associated with an ongoing command like merge,
+/// revert, cherry-pick, etc.  For example: MERGE_HEAD, MERGE_MSG, etc.
+///
+/// error - The error if one occurred.
+///
+/// Returns YES if operation was successful, NO otherwise
+- (BOOL)cleanupStateWithError:(NSError * _Nullable __autoreleasing *)error;
+
+/// Creates a new note in this repo (using a default notes reference, e.g. "refs/notes/commits")
+///
+/// note          - Note text.
+/// theTarget     - Object (usually a commit) to which this note refers to.
+///                 This object must belong to this repository.
+/// referenceName - Name for the notes reference in the repo, or nil for default ("refs/notes/commits")
+/// author        - Signature of the author for this note, and
+///                 of the note creation time
+/// committer     - Signature of the committer for this note.
+/// overwrite     - If set to YES, the note will be overwritten if it already exists.
+/// error         - Will be filled with a NSError object in case of error.
+///                 May be NULL.
+///
+/// Returns the newly created note or nil on error.
+- (GTNote * _Nullable)createNote:(NSString *)note target:(GTObject *)theTarget referenceName:(NSString * _Nullable)referenceName author:(GTSignature *)author committer:(GTSignature *)committer overwriteIfExists:(BOOL)overwrite error:(NSError **)error;
+
+/// Removes a note attached to object in this repo
+///
+/// parentObject  - Object (usually a commit) to which the note to be removed is attached to.
+///                 This object must belong to this repository.
+/// referenceName - Name for the notes reference in the repo, or nil for default ("refs/notes/commits")
+/// author        - Signature of the author for this note removal, and
+///                 of the note removal time
+/// committer     - Signature of the committer for this note removal.
+/// error         - Will be filled with a NSError object in case of error.
+///                 May be NULL.
+///
+/// Returns the YES on success and NO on error.
+- (BOOL)removeNoteFromObject:(GTObject *)parentObject referenceName:(NSString * _Nullable)referenceName author:(GTSignature *)author committer:(GTSignature *)committer error:(NSError **)error;
+
+/// Enumerates through all stored notes in this repo
+///
+/// referenceName - Name for the notes reference in the repo, or nil for default ("refs/notes/commits")
+/// error         - Will be filled with a NSError object in case of error.
+///                 May be NULL.
+/// block         - A block to be called on each encountered note object. The block accepts
+///                 a reference to `note`, an `object` that is annotated with the note.
+///                 If the block sets `stop` to YES, the iterator is finished.
+///
+/// Returns YES on overall success or NO on error of any kind.
+- (BOOL)enumerateNotesWithReferenceName:(NSString * _Nullable)referenceName error:(NSError **)error usingBlock:(void (^)(GTNote * _Nullable note, GTObject * _Nullable object, NSError * _Nullable error, BOOL *stop))block;
 
 @end
+
+NS_ASSUME_NONNULL_END

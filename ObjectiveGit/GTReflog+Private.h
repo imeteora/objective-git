@@ -8,15 +8,8 @@
 
 #import "GTReflog.h"
 
-@class GTReference;
-
 @interface GTReflog ()
 
-/// Initializes the receiver with a reference.
-///
-/// reference - The reference whose reflog is being represented. Cannot be nil.
-///
-/// Returns the initialized object.
-- (id)initWithReference:(GTReference *)reference;
+- (instancetype _Nullable)init NS_UNAVAILABLE;
 
 @end

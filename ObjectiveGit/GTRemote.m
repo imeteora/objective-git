@@ -60,6 +60,11 @@ NSString * const GTRemoteRenameProblematicRefSpecs = @"GTRemoteRenameProblematic
 	return [[self alloc] initWithGitRemote:remote inRepository:repo];
 }
 
+- (instancetype)init {
+	NSAssert(NO, @"Call to an unavailable initializer.");
+	return nil;
+}
+
 - (instancetype)initWithGitRemote:(git_remote *)remote inRepository:(GTRepository *)repo {
 	NSParameterAssert(remote != NULL);
 	NSParameterAssert(repo != nil);
@@ -90,6 +95,10 @@ NSString * const GTRemoteRenameProblematicRefSpecs = @"GTRemoteRenameProblematic
 	return self.name.hash ^ self.URLString.hash;
 }
 
+- (NSString *)description {
+	return [NSString stringWithFormat:@"<%@: %p> name: %@, URLString: %@", NSStringFromClass([self class]), self, self.name, self.URLString];
+}
+
 #pragma mark API
 
 + (BOOL)isValidRemoteName:(NSString *)name {
@@ -115,7 +124,7 @@ NSString * const GTRemoteRenameProblematicRefSpecs = @"GTRemoteRenameProblematic
 }
 
 - (void)setURLString:(NSString *)URLString {
-	git_remote_set_url(self.git_remote, URLString.UTF8String);
+	git_remote_set_url(self.repository.git_repository, self.name.UTF8String, URLString.UTF8String);
 }
 
 - (NSString *)pushURLString {
@@ -126,23 +135,7 @@ NSString * const GTRemoteRenameProblematicRefSpecs = @"GTRemoteRenameProblematic
 }
 
 - (void)setPushURLString:(NSString *)pushURLString {
-	git_remote_set_pushurl(self.git_remote, pushURLString.UTF8String);
-}
-
-- (BOOL)updatesFetchHead {
-	return git_remote_update_fetchhead(self.git_remote) != 0;
-}
-
-- (void)setUpdatesFetchHead:(BOOL)updatesFetchHead {
-	git_remote_set_update_fetchhead(self.git_remote, updatesFetchHead);
-}
-
-- (GTRemoteAutoTagOption)autoTag {
-	return (GTRemoteAutoTagOption)git_remote_autotag(self.git_remote);
-}
-
-- (void)setAutoTag:(GTRemoteAutoTagOption)autoTag {
-	git_remote_set_autotag(self.git_remote, (git_remote_autotag_option_t)autoTag);
+	git_remote_set_pushurl(self.repository.git_repository, self.name.UTF8String, pushURLString.UTF8String);
 }
 
 - (BOOL)isConnected {
@@ -196,30 +189,34 @@ NSString * const GTRemoteRenameProblematicRefSpecs = @"GTRemoteRenameProblematic
 
 #pragma mark Update the remote
 
-- (BOOL)saveRemote:(NSError **)error {
-	int gitError = git_remote_save(self.git_remote);
-	if (gitError != GIT_OK) {
-		if (error != NULL) {
-			*error = [NSError git_errorFor:gitError description:@"Failed to save remote configuration."];
-		}
-		return NO;
-	}
-	return YES;
-}
-
 - (BOOL)updateURLString:(NSString *)URLString error:(NSError **)error {
 	NSParameterAssert(URLString != nil);
 
 	if ([self.URLString isEqualToString:URLString]) return YES;
 
-	int gitError = git_remote_set_url(self.git_remote, URLString.UTF8String);
+	int gitError = git_remote_set_url(self.repository.git_repository, self.name.UTF8String, URLString.UTF8String);
 	if (gitError != GIT_OK) {
 		if (error != NULL) {
 			*error = [NSError git_errorFor:gitError description:@"Failed to update remote URL string."];
 		}
 		return NO;
 	}
-	return [self saveRemote:error];
+	return YES;
+}
+
+- (BOOL)updatePushURLString:(NSString *)URLString error:(NSError **)error {
+	NSParameterAssert(URLString != nil);
+	
+	if ([self.pushURLString isEqualToString:URLString]) return YES;
+	
+	int gitError = git_remote_set_pushurl(self.repository.git_repository, self.name.UTF8String, URLString.UTF8String);
+	if (gitError != GIT_OK) {
+		if (error != NULL) {
+			*error = [NSError git_errorFor:gitError description:@"Failed to update remote push URL string."];
+		}
+		return NO;
+	}
+	return YES;
 }
 
 - (BOOL)addFetchRefspec:(NSString *)fetchRefspec error:(NSError **)error {
@@ -227,14 +224,14 @@ NSString * const GTRemoteRenameProblematicRefSpecs = @"GTRemoteRenameProblematic
 
 	if ([self.fetchRefspecs containsObject:fetchRefspec]) return YES;
 
-	int gitError = git_remote_add_fetch(self.git_remote, fetchRefspec.UTF8String);
+	int gitError = git_remote_add_fetch(self.repository.git_repository, self.name.UTF8String, fetchRefspec.UTF8String);
 	if (gitError != GIT_OK) {
 		if (error != NULL) {
 			*error = [NSError git_errorFor:gitError description:@"Failed to add fetch refspec."];
 		}
 		return NO;
 	}
-	return [self saveRemote:error];
+	return YES;
 }
 
 @end

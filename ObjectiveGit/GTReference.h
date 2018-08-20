@@ -28,7 +28,6 @@
 
 @class GTOID;
 @class GTReflog;
-@class GTSignature;
 
 typedef NS_ENUM(NSInteger, GTReferenceErrorCode) {
 	GTReferenceErrorCodeInvalidReference = -4,
@@ -39,6 +38,8 @@ typedef NS_OPTIONS(NSInteger, GTReferenceType) {
 	GTReferenceTypeOid =        GIT_REF_OID,      /** A reference which points at an object id */
 	GTReferenceTypeSymbolic =   GIT_REF_SYMBOLIC, /** A reference which points at another reference */
 };
+
+NS_ASSUME_NONNULL_BEGIN
 
 @class GTRepository;
 
@@ -51,37 +52,51 @@ typedef NS_OPTIONS(NSInteger, GTReferenceType) {
 @property (nonatomic, readonly, strong) GTRepository *repository;
 @property (nonatomic, readonly) GTReferenceType referenceType;
 @property (nonatomic, readonly) const git_oid *git_oid;
-@property (nonatomic, strong, readonly) GTOID *OID;
+@property (nonatomic, strong, readonly) GTOID * _Nullable OID;
+
+/// Whether this is a tag.
+@property (nonatomic, readonly, getter = isTag) BOOL tag;
+
+/// Whether this is a local branch.
+@property (nonatomic, readonly, getter = isBranch) BOOL branch;
 
 /// Whether this is a remote-tracking branch.
 @property (nonatomic, readonly, getter = isRemote) BOOL remote;
 
+/// Whether this is a note ref.
+@property (nonatomic, readonly, getter = isNote) BOOL note;
+
 /// The reflog for the reference.
-@property (nonatomic, readonly, strong) GTReflog *reflog;
+@property (nonatomic, readonly, strong) GTReflog * _Nullable reflog;
 
 /// Convenience initializers
-+ (id)referenceByLookingUpReferencedNamed:(NSString *)refName inRepository:(GTRepository *)theRepo error:(NSError **)error;
-- (id)initByLookingUpReferenceNamed:(NSString *)refName inRepository:(GTRepository *)theRepo error:(NSError **)error;
++ (instancetype _Nullable)referenceByResolvingSymbolicReference:(GTReference *)symbolicRef error:(NSError **)error;
+- (instancetype _Nullable)initByResolvingSymbolicReference:(GTReference *)symbolicRef error:(NSError **)error;
 
-+ (id)referenceByResolvingSymbolicReference:(GTReference *)symbolicRef error:(NSError **)error;
-- (id)initByResolvingSymbolicReference:(GTReference *)symbolicRef error:(NSError **)error;
+- (instancetype)init NS_UNAVAILABLE;
 
-- (id)initWithGitReference:(git_reference *)ref repository:(GTRepository *)repository;
+/// Designated initializer.
+///
+/// ref        - The reference to wrap. Must not be nil.
+/// repository - The repository containing the reference. Must not be nil.
+///
+/// Returns the initialized receiver.
+- (instancetype _Nullable)initWithGitReference:(git_reference *)ref repository:(GTRepository *)repository NS_DESIGNATED_INITIALIZER;
 
 /// The underlying `git_reference` object.
 - (git_reference *)git_reference __attribute__((objc_returns_inner_pointer));
 
 /// The target (either GTObject or GTReference) to which the reference points.
-@property (nonatomic, readonly, copy) id unresolvedTarget;
+@property (nonatomic, readonly, copy) id _Nullable unresolvedTarget;
 
 /// The resolved object to which the reference points.
-@property (nonatomic, readonly, copy) id resolvedTarget;
+@property (nonatomic, readonly, copy) id _Nullable resolvedTarget;
 
 /// The last direct reference in a chain
 @property (nonatomic, readonly, copy) GTReference *resolvedReference;
 
-/// The SHA of the target object
-@property (nonatomic, readonly, copy) NSString *targetSHA;
+/// The OID of the target object.
+@property (nonatomic, readonly, copy, nullable) GTOID *targetOID;
 
 /// Updates the on-disk reference to point to the target and returns the updated
 /// reference.
@@ -89,14 +104,12 @@ typedef NS_OPTIONS(NSInteger, GTReferenceType) {
 /// Note that this does *not* change the receiver's target.
 ///
 /// newTarget - The target for the new reference. This must not be nil.
-/// signature - A signature for the committer updating this ref, used for
-///             creating a reflog entry. This may be nil.
 /// message   - A message to use when creating the reflog entry for this action.
 ///             This may be nil.
 /// error     - The error if one occurred.
 ///
 /// Returns the updated reference, or nil if an error occurred.
-- (GTReference *)referenceByUpdatingTarget:(NSString *)newTarget committer:(GTSignature *)signature message:(NSString *)message error:(NSError **)error;
+- (GTReference * _Nullable)referenceByUpdatingTarget:(NSString *)newTarget message:(NSString * _Nullable)message error:(NSError **)error;
 
 /// The name of the reference.
 @property (nonatomic, readonly, copy) NSString *name;
@@ -109,7 +122,7 @@ typedef NS_OPTIONS(NSInteger, GTReferenceType) {
 /// error   - The error if one occurred.
 ///
 /// Returns the renamed reference, or nil if an error occurred.
-- (GTReference *)referenceByRenaming:(NSString *)newName error:(NSError **)error;
+- (GTReference * _Nullable)referenceByRenaming:(NSString *)newName error:(NSError **)error;
 
 /// Delete this reference.
 ///
@@ -123,14 +136,14 @@ typedef NS_OPTIONS(NSInteger, GTReferenceType) {
 /// error(out) - will be filled if an error occurs
 ///
 /// returns the peeled GTReference or nil if an error occurred.
-- (GTReference *)resolvedReferenceWithError:(NSError **)error;
+- (GTReference * _Nullable)resolvedReferenceWithError:(NSError **)error;
 
 /// Reload the reference from disk.
 ///
 /// error - The error if one occurred.
 ///
 /// Returns the reloaded reference, or nil if an error occurred.
-- (GTReference *)reloadedReferenceWithError:(NSError **)error;
+- (GTReference * _Nullable)reloadedReferenceWithError:(NSError **)error;
 
 /// An error indicating that the git_reference is no longer valid.
 + (NSError *)invalidReferenceError;
@@ -143,3 +156,5 @@ typedef NS_OPTIONS(NSInteger, GTReferenceType) {
 + (BOOL)isValidReferenceName:(NSString *)refName;
 
 @end
+
+NS_ASSUME_NONNULL_END

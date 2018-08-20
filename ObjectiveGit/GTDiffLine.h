@@ -21,6 +21,8 @@ typedef NS_ENUM(char, GTDiffLineOrigin) {
 	GTDiffLineOriginDeleteEOFNewLine = GIT_DIFF_LINE_DEL_EOFNL,
 };
 
+NS_ASSUME_NONNULL_BEGIN
+
 /// Represents an individual line in a diff hunk.
 @interface GTDiffLine : NSObject
 
@@ -43,7 +45,15 @@ typedef NS_ENUM(char, GTDiffLineOrigin) {
 /// The number of newlines appearing in `-content`.
 @property (nonatomic, readonly) NSInteger lineCount;
 
+- (instancetype)init NS_UNAVAILABLE;
+
 /// Designated initialiser.
-- (instancetype)initWithGitLine:(const git_diff_line *)line;
+///
+/// line - The diff line to wrap. May not be NULL.
+///
+/// Returns a diff line, or nil if an error occurs.
+- (instancetype _Nullable)initWithGitLine:(const git_diff_line *)line NS_DESIGNATED_INITIALIZER;
 
 @end
+
+NS_ASSUME_NONNULL_END

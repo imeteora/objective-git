@@ -34,20 +34,22 @@
 @class GTRepository;
 @class GTTree;
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface GTIndex : NSObject
 
 /// The repository in which the index resides. This may be nil if the index was
 /// created with -initWithFileURL:error:.
-@property (nonatomic, readonly, strong) GTRepository *repository;
+@property (nonatomic, readonly, strong) GTRepository * _Nullable repository;
 
-/// The file URL for the index if it exists on disk.
-@property (nonatomic, readonly, copy) NSURL *fileURL;
+/// The file URL for the index if it exists on disk; nil otherwise.
+@property (nonatomic, readonly, copy) NSURL * _Nullable fileURL;
 
 /// The number of entries in the index.
 @property (nonatomic, readonly) NSUInteger entryCount;
 
 /// The GTIndexEntries in the index.
-@property (nonatomic, readonly, copy) NSArray *entries;
+@property (nonatomic, readonly, copy) NSArray<GTIndexEntry *> *entries;
 
 /// Whether the index contains conflicted files.
 @property (nonatomic, readonly) BOOL hasConflicts;
@@ -58,7 +60,7 @@
 /// error      - If not NULL, set to any error that occurs.
 ///
 /// Returns the newly created index, or nil if an error occurred.
-+ (instancetype)inMemoryIndexWithRepository:(GTRepository *)repository error:(NSError **)error;
++ (instancetype _Nullable)inMemoryIndexWithRepository:(GTRepository *)repository error:(NSError **)error;
 
 /// Loads the index at the given file URL.
 ///
@@ -67,16 +69,18 @@
 /// error      - If not NULL, set to any error that occurs.
 ///
 /// Returns the loaded index, or nil if an error occurred.
-+ (instancetype)indexWithFileURL:(NSURL *)fileURL repository:(GTRepository *)repository error:(NSError **)error;
++ (instancetype _Nullable)indexWithFileURL:(NSURL *)fileURL repository:(GTRepository *)repository error:(NSError **)error;
 
-/// Initializes the receiver with the given libgit2 index.
+- (instancetype)init NS_UNAVAILABLE;
+
+/// Initializes the receiver with the given libgit2 index. Designated initializer.
 ///
 /// index      - The libgit2 index from which the index should be created. Cannot
 ///              be NULL.
 /// repository - The repository in which the index resides. Cannot be nil.
 ///
 /// Returns the initialized index.
-- (instancetype)initWithGitIndex:(git_index *)index repository:(GTRepository *)repository;
+- (instancetype)initWithGitIndex:(git_index *)index repository:(GTRepository *)repository NS_DESIGNATED_INITIALIZER;
 
 /// The underlying `git_index` object.
 - (git_index *)git_index __attribute__((objc_returns_inner_pointer));
@@ -101,24 +105,24 @@
 /// index - The index of the entry to get. Must be within 0 and self.entryCount.
 ///
 /// Returns a new GTIndexEntry, or nil if an error occurred.
-- (GTIndexEntry *)entryAtIndex:(NSUInteger)index;
+- (GTIndexEntry * _Nullable)entryAtIndex:(NSUInteger)index;
 
-/// Get the entry with the given name.
-- (GTIndexEntry *)entryWithName:(NSString *)name;
+/// Get the entry with the given path, or nil if an error occurred.
+- (GTIndexEntry * _Nullable)entryWithPath:(NSString *)path;
 
 /// Get the entry with the given name.
 ///
-/// name  - The name of the entry to get. Cannot be nil.
+/// path  - The path of the entry to get. Cannot be nil.
 /// error - The error if one occurred.
 ///
 /// Returns a new GTIndexEntry, or nil if an error occurred.
-- (GTIndexEntry *)entryWithName:(NSString *)name error:(NSError **)error;
+- (GTIndexEntry * _Nullable)entryWithPath:(NSString *)path error:(NSError **)error;
 
 /// Add an entry to the index.
 ///
 /// Note that this *cannot* add submodules. See -[GTSubmodule addToIndex:].
 ///
-/// entry - The entry to add.
+/// entry - The entry to add. Must not be nil.
 /// error - The error if one occurred.
 ///
 /// Returns YES if successful, NO otherwise.
@@ -135,6 +139,14 @@
 /// Returns YES if successful, NO otherwise.
 - (BOOL)addFile:(NSString *)file error:(NSError **)error;
 
+/// Add an entry (with the provided data and name) to the index.
+/// Will fail if the receiver's repository is nil.
+///
+/// data  - The content of the entry to add. Cannot be nil.
+/// path  - The path of the entry to add. Cannot be nil.
+/// error - The error if one occurred.
+- (BOOL)addData:(NSData *)data withPath:(NSString *)path error:(NSError **)error;
+
 /// Reads the contents of the given tree into the index.
 ///
 /// tree  - The tree to add to the index. This must not be nil.
@@ -142,6 +154,13 @@
 ///
 /// Returns whether reading the tree was successful.
 - (BOOL)addContentsOfTree:(GTTree *)tree error:(NSError **)error;
+
+/// Add all the content of the working directory to the index. Like `git add -A`
+///
+/// error - If not NULL, set to any error that occurs.
+///
+/// Returns whether the operation was successful
+- (BOOL)addAll:(NSError **)error;
 
 /// Remove an entry (by relative path) from the index.
 /// Will fail if the receiver's repository is nil.
@@ -167,7 +186,7 @@
 /// error - The error if one occurred.
 ///
 /// Returns a new GTTree, or nil if an error occurred.
-- (GTTree *)writeTree:(NSError **)error;
+- (GTTree * _Nullable)writeTree:(NSError **)error;
 
 /// Write the index to the given repository as a tree.
 /// Will fail if the receiver's index has conflicts.
@@ -176,7 +195,7 @@
 /// error      - The error if one occurred.
 ///
 /// Returns a new GTTree or nil if an error occurred.
-- (GTTree *)writeTreeToRepository:(GTRepository *)repository error:(NSError **)error;
+- (GTTree * _Nullable)writeTreeToRepository:(GTRepository *)repository error:(NSError **)error;
 
 /// Enumerate through any conflicts in the index, running the provided block each
 /// time.
@@ -197,15 +216,24 @@
 ///
 /// pathspecs - An `NSString` array of path patterns. (E.g: *.c)
 ///             If nil is passed in, all index entries will be updated.
-/// block     - A block run each time a pathspec is matched; before the index is updated.
-///             The `matchedPathspec` parameter is a string indicating what the pathspec (from `pathspecs`) matched.
-///             If you pass in NULL in to the `pathspecs` parameter this parameter will be empty.
-///             The `path` parameter is a repository relative path to the file about to be updated.
+/// block     - A block run each time a pathspec is matched; before the index is
+///             updated. The `matchedPathspec` parameter is a string indicating
+///             what the pathspec (from `pathspecs`) matched. If you pass in NULL
+///             in to the `pathspecs` parameter this parameter will be empty.
+///             The `path` parameter is a repository relative path to the file
+///             about to be updated.
 ///             The `stop` parameter can be set to `YES` to abort the operation.
 ///             Return `YES` to update the given path, or `NO` to skip it. May be nil.
 /// error     - When something goes wrong, this parameter is set. Optional.
 ///
 /// Returns `YES` in the event that everything has gone smoothly. Otherwise, `NO`.
-- (BOOL)updatePathspecs:(NSArray *)pathspecs error:(NSError **)error passingTest:(BOOL (^)(NSString *matchedPathspec, NSString *path, BOOL *stop))block;
+- (BOOL)updatePathspecs:(NSArray<NSString*> * _Nullable)pathspecs error:(NSError **)error passingTest:(BOOL (^ _Nullable)(NSString *matchedPathspec, NSString *path, BOOL *stop))block;
+
+#pragma mark Deprecations
+- (GTIndexEntry * _Nullable)entryWithName:(NSString *)name __deprecated_msg("use entryWithPath: instead.");
+- (GTIndexEntry * _Nullable)entryWithName:(NSString *)name error:(NSError **)error __deprecated_msg("use entryWithPath:error: instead.");
+
 
 @end
+
+NS_ASSUME_NONNULL_END

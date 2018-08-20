@@ -47,6 +47,8 @@ typedef NS_ENUM(int, GTObjectType) {
 @class GTOdbObject;
 @class GTOID;
 
+NS_ASSUME_NONNULL_BEGIN
+
 @interface GTObject : NSObject
 
 @property (nonatomic, readonly) NSString *type;
@@ -55,9 +57,13 @@ typedef NS_ENUM(int, GTObjectType) {
 @property (nonatomic, readonly, strong) GTRepository *repository;
 @property (nonatomic, readonly) GTOID *OID;
 
-/// Convenience initializers
-- (id)initWithObj:(git_object *)theObject inRepository:(GTRepository *)theRepo;
-+ (id)objectWithObj:(git_object *)theObject inRepository:(GTRepository *)theRepo;
+- (instancetype)init NS_UNAVAILABLE;
+
+/// Designated initializer.
+- (id _Nullable)initWithObj:(git_object *)theObject inRepository:(GTRepository *)theRepo NS_DESIGNATED_INITIALIZER;
+
+/// Class convenience initializer
++ (id _Nullable)objectWithObj:(git_object *)theObject inRepository:(GTRepository *)theRepo;
 
 /// The underlying `git_object`.
 - (git_object *)git_object __attribute__((objc_returns_inner_pointer));
@@ -67,7 +73,7 @@ typedef NS_ENUM(int, GTObjectType) {
 /// error(out) - will be filled if an error occurs
 ///
 /// returns a GTOdbObject or nil if an error occurred.
-- (GTOdbObject *)odbObjectWithError:(NSError **)error;
+- (GTOdbObject * _Nullable)odbObjectWithError:(NSError **)error;
 
 /// Recursively peel an object until an object of the specified type is met.
 ///
@@ -78,6 +84,8 @@ typedef NS_ENUM(int, GTObjectType) {
 ///         May be NULL.
 ///
 /// Returns the found object or nil on error.
-- (id)objectByPeelingToType:(GTObjectType)type error:(NSError **)error;
+- (id _Nullable)objectByPeelingToType:(GTObjectType)type error:(NSError **)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

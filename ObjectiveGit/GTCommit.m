@@ -35,9 +35,11 @@
 #import "NSString+Git.h"
 #import "NSDate+GTTimeAdditions.h"
 #import "GTOID.h"
+#import "GTIndex.h"
 
 #import "git2/commit.h"
 #import "git2/errors.h"
+#import "git2/merge.h"
 
 @implementation GTCommit
 
@@ -50,6 +52,10 @@
 }
 
 #pragma mark API
+
+- (GTOID *)OID {
+	return [GTOID oidWithGitOid:git_commit_id(self.git_commit)];
+}
 
 - (NSString *)message {
 	const char *s = git_commit_message(self.git_commit);
@@ -115,6 +121,19 @@
 	return git_commit_parentcount(self.git_commit) > 1;
 }
 
+- (NSArray <GTOID *> *)parentOIDs {
+	unsigned numberOfParents = git_commit_parentcount(self.git_commit);
+	NSMutableArray <GTOID *> *parents = [NSMutableArray arrayWithCapacity:numberOfParents];
+
+	for (unsigned i = 0; i < numberOfParents; i++) {
+		const git_oid *parent = git_commit_parent_id(self.git_commit, i);
+
+		[parents addObject:[GTOID oidWithGitOid:parent]];
+	}
+
+	return parents;
+}
+
 - (NSArray *)parents {
 	unsigned numberOfParents = git_commit_parentcount(self.git_commit);
 	NSMutableArray *parents = [NSMutableArray arrayWithCapacity:numberOfParents];
@@ -128,6 +147,22 @@
 	}
 
 	return parents;
+}
+
+#pragma mark Merging
+
+- (GTIndex *)merge:(GTCommit *)otherCommit error:(NSError **)error {
+	NSParameterAssert(otherCommit != nil);
+	
+	git_index *index;
+	
+	int result = git_merge_commits(&index, self.repository.git_repository, self.git_commit, otherCommit.git_commit, NULL);
+	if (result != GIT_OK || index == NULL) {
+		if (error != NULL) *error = [NSError git_errorFor:result description:@"Failed to merge commit %@ with commit %@", self.SHA, otherCommit.SHA];
+		return nil;
+	}
+	
+	return [[GTIndex alloc] initWithGitIndex:index repository:self.repository];
 }
 
 @end

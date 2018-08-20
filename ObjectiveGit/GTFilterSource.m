@@ -16,7 +16,12 @@
 
 #pragma mark Lifecycle
 
-- (id)initWithGitFilterSource:(const git_filter_source *)source {
+- (instancetype)init {
+	NSAssert(NO, @"Call to an unavailable initializer.");
+	return nil;
+}
+
+- (instancetype)initWithGitFilterSource:(const git_filter_source *)source {
 	NSParameterAssert(source != NULL);
 
 	self = [super init];

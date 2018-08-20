@@ -27,19 +27,22 @@
 }
 
 - (NSString *)SHA {
-	char *SHA = malloc(GIT_OID_HEXSZ);
-	if (SHA == NULL) return nil;
-
-	git_oid_fmt(SHA, self.git_oid);
-
-	NSString *str = [[NSString alloc] initWithBytesNoCopy:SHA length:GIT_OID_HEXSZ encoding:NSUTF8StringEncoding freeWhenDone:YES];
-	if (str == nil) free(SHA);
+	char *SHA = git_oid_tostr_s(self.git_oid);
+	NSString *str = [[NSString alloc] initWithBytes:SHA
+                                             length:GIT_OID_HEXSZ
+                                           encoding:NSUTF8StringEncoding];
+	NSAssert(str != nil, @"Failed to create SHA string");
 	return str;
 }
 
 #pragma mark Lifecycle
 
-- (id)initWithGitOid:(const git_oid *)oid {
+- (instancetype)init {
+	NSAssert(NO, @"Call to an unavailable initializer.");
+	return nil;
+}
+
+- (instancetype)initWithGitOid:(const git_oid *)oid {
 	NSParameterAssert(oid != NULL);
 
 	self = [super init];
@@ -50,16 +53,18 @@
 	return self;
 }
 
-- (id)initWithSHA:(NSString *)SHA error:(NSError **)error {
+- (instancetype)initWithSHA:(NSString *)SHA error:(NSError **)error {
 	NSParameterAssert(SHA != nil);
-	return [self initWithSHACString:SHA.UTF8String error:error];
+	const char *SHACString = SHA.UTF8String;
+	NSAssert(SHACString, @"Unexpected nil SHA");
+	return [self initWithSHACString:SHACString error:error];
 }
 
-- (id)initWithSHA:(NSString *)SHA {
+- (instancetype)initWithSHA:(NSString *)SHA {
 	return [self initWithSHA:SHA error:NULL];
 }
 
-- (id)initWithSHACString:(const char *)string error:(NSError **)error {
+- (instancetype)initWithSHACString:(const char *)string error:(NSError **)error {
 	NSParameterAssert(string != NULL);
 	
 	self = [super init];
@@ -76,7 +81,7 @@
 	return self;
 }
 
-- (id)initWithSHACString:(const char *)string {
+- (instancetype)initWithSHACString:(const char *)string {
 	return [self initWithSHACString:string error:NULL];
 }
 

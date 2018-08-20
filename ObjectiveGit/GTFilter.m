@@ -42,7 +42,12 @@ static NSMutableDictionary *GTFiltersGitFilterToRegisteredFilters = nil;
 	GTFiltersGitFilterToRegisteredFilters = [[NSMutableDictionary alloc] init];
 }
 
-- (id)initWithName:(NSString *)name attributes:(NSString *)attributes applyBlock:(NSData * (^)(void **payload, NSData *from, GTFilterSource *source, BOOL *applied))applyBlock {
+- (instancetype)init {
+	NSAssert(NO, @"Call to an unavailable initializer.");
+	return nil;
+}
+
+- (instancetype)initWithName:(NSString *)name attributes:(NSString *)attributes applyBlock:(NSData * (^)(void **payload, NSData *from, GTFilterSource *source, BOOL *applied))applyBlock {
 	NSParameterAssert(name != nil);
 	NSParameterAssert(applyBlock != NULL);
 
@@ -91,7 +96,9 @@ static void GTFilterShutdown(git_filter *filter) {
 
 static int GTFilterCheck(git_filter *filter, void **payload, const git_filter_source *src, const char **attr_values) {
 	GTFilter *self = GTFiltersGitFilterToRegisteredFilters[[NSValue valueWithPointer:filter]];
-	BOOL accept = self.checkBlock(payload, [[GTFilterSource alloc] initWithGitFilterSource:src], attr_values);
+	GTFilterSource *source = [[GTFilterSource alloc] initWithGitFilterSource:src];
+	NSCAssert(source != nil, @"Unexpected nil filter source");
+	BOOL accept = self.checkBlock(payload, source, attr_values);
 	return accept ? 0 : GIT_PASSTHROUGH;
 }
 

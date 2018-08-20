@@ -6,9 +6,9 @@
 //  Copyright (c) 2014 GitHub, Inc. All rights reserved.
 //
 
-#import <Nimble/Nimble.h>
-#import <ObjectiveGit/ObjectiveGit.h>
-#import <Quick/Quick.h>
+@import ObjectiveGit;
+@import Nimble;
+@import Quick;
 
 #import "QuickSpec+GTFixtures.h"
 
@@ -159,7 +159,7 @@ describe(@"application", ^{
 		BOOL success = [NSFileManager.defaultManager removeItemAtURL:testFileURL error:NULL];
 		expect(@(success)).to(beTruthy());
 
-		success = [repository checkoutCommit:newCommit strategy:GTCheckoutStrategyForce error:NULL progressBlock:NULL];
+		success = [repository checkoutCommit:newCommit options:[GTCheckoutOptions checkoutOptionsWithStrategy:GTCheckoutStrategyForce] error:NULL];
 		expect(@(success)).to(beTruthy());
 
 		expect([NSData dataWithContentsOfURL:testFileURL]).to(equal(replacementData));

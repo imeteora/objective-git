@@ -35,32 +35,51 @@ typedef NS_ENUM(NSInteger, GTBranchType) {
     GTBranchTypeRemote = GIT_BRANCH_REMOTE,
 };
 
+NS_ASSUME_NONNULL_BEGIN
+
 /// A git branch object.
 ///
-/// Branches are considered to be equivalent iff both their `name` and `SHA` are
+/// Branches are considered to be equivalent if both their `name` and `SHA` are
 /// equal.
 @interface GTBranch : NSObject
 
-@property (nonatomic, readonly) NSString *name;
-@property (nonatomic, readonly) NSString *shortName;
-@property (nonatomic, readonly) NSString *SHA;
-@property (nonatomic, readonly) NSString *remoteName;
+@property (nonatomic, readonly) NSString * _Nullable name;
+@property (nonatomic, readonly) NSString * _Nullable shortName;
+@property (nonatomic, copy, readonly) GTOID * _Nullable OID;
+@property (nonatomic, readonly) NSString * _Nullable remoteName;
 @property (nonatomic, readonly) GTBranchType branchType;
 @property (nonatomic, readonly, strong) GTRepository *repository;
 @property (nonatomic, readonly, strong) GTReference *reference;
+@property (nonatomic, readonly, getter=isHEAD) BOOL HEAD;
 
 + (NSString *)localNamePrefix;
 + (NSString *)remoteNamePrefix;
 
-- (id)initWithReference:(GTReference *)ref repository:(GTRepository *)repo;
-+ (id)branchWithReference:(GTReference *)ref repository:(GTRepository *)repo;
+- (instancetype)init NS_UNAVAILABLE;
+
+/// Designated initializer.
+///
+/// ref  - The branch reference to wrap. Must not be nil.
+///
+/// Returns the initialized receiver.
+- (instancetype _Nullable)initWithReference:(GTReference *)ref NS_DESIGNATED_INITIALIZER;
+
+/// Convenience class initializer.
+///
+/// ref  - The branch reference to wrap. Must not be nil.
+///
+/// Returns an initialized instance.
++ (instancetype _Nullable)branchWithReference:(GTReference *)ref;
 
 /// Get the target commit for this branch
 ///
 /// error(out) - will be filled if an error occurs
 ///
 /// returns a GTCommit object or nil if an error occurred
-- (GTCommit *)targetCommitAndReturnError:(NSError **)error;
+- (GTCommit * _Nullable)targetCommitWithError:(NSError **)error;
+
+/// Renames the branch. Setting `force` to YES to delete another branch with the same name.
+- (BOOL)rename:(NSString *)name force:(BOOL)force error:(NSError **)error;
 
 /// Count all commits in this branch
 ///
@@ -69,7 +88,13 @@ typedef NS_ENUM(NSInteger, GTBranchType) {
 /// returns number of commits in the branch or NSNotFound if an error occurred
 - (NSUInteger)numberOfCommitsWithError:(NSError **)error;
 
-- (NSArray *)uniqueCommitsRelativeToBranch:(GTBranch *)otherBranch error:(NSError **)error;
+/// Get unique commits
+///
+/// otherBranch -
+/// error       - If not NULL, set to any error that occurs.
+///
+/// Returns a (possibly empty) array of GTCommits, or nil if an error occurs.
+- (NSArray<GTCommit *> * _Nullable)uniqueCommitsRelativeToBranch:(GTBranch *)otherBranch error:(NSError **)error;
 
 /// Deletes the local branch and nils out the reference.
 - (BOOL)deleteWithError:(NSError **)error;
@@ -77,7 +102,7 @@ typedef NS_ENUM(NSInteger, GTBranchType) {
 /// If the receiver is a local branch, looks up and returns its tracking branch.
 /// If the receiver is a remote branch, returns self. If no tracking branch was
 /// found, returns nil and sets `success` to YES.
-- (GTBranch *)trackingBranchWithError:(NSError **)error success:(BOOL *)success;
+- (GTBranch * _Nullable)trackingBranchWithError:(NSError **)error success:(BOOL * _Nullable)success;
 
 /// Update the tracking branch.
 ///
@@ -86,7 +111,7 @@ typedef NS_ENUM(NSInteger, GTBranchType) {
 /// error          - The error if one occurred.
 ///
 /// Returns whether it was successful.
-- (BOOL)updateTrackingBranch:(GTBranch *)trackingBranch error:(NSError **)error;
+- (BOOL)updateTrackingBranch:(GTBranch * _Nullable)trackingBranch error:(NSError **)error;
 
 /// Reloads the branch's reference and creates a new branch based off that newly
 /// loaded reference.
@@ -96,7 +121,7 @@ typedef NS_ENUM(NSInteger, GTBranchType) {
 /// error - The error if one occurred.
 ///
 /// Returns the reloaded branch, or nil if an error occurred.
-- (GTBranch *)reloadedBranchWithError:(NSError **)error;
+- (GTBranch * _Nullable)reloadedBranchWithError:(NSError **)error;
 
 /// Calculate the ahead/behind count from this branch to the given branch.
 ///
@@ -110,3 +135,5 @@ typedef NS_ENUM(NSInteger, GTBranchType) {
 - (BOOL)calculateAhead:(size_t *)ahead behind:(size_t *)behind relativeTo:(GTBranch *)branch error:(NSError **)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

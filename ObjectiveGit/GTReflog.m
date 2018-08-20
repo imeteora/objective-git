@@ -33,7 +33,12 @@
 	if (_git_reflog != NULL) git_reflog_free(_git_reflog);
 }
 
-- (id)initWithReference:(GTReference *)reference {
+- (instancetype)init {
+	NSAssert(NO, @"Call to an unavailable initializer.");
+	return nil;
+}
+
+- (instancetype)initWithReference:(GTReference *)reference {
 	NSParameterAssert(reference != nil);
 	NSParameterAssert(reference.name != nil);
 

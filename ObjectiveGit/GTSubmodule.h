@@ -19,7 +19,7 @@
 ///
 /// These flags are mutually exclusive.
 typedef NS_ENUM(NSInteger, GTSubmoduleIgnoreRule) {
-	GTSubmoduleIgnoreReset = GIT_SUBMODULE_IGNORE_RESET,
+	GTSubmoduleIgnoreUnspecified = GIT_SUBMODULE_IGNORE_UNSPECIFIED,
 	GTSubmoduleIgnoreNone = GIT_SUBMODULE_IGNORE_NONE,
 	GTSubmoduleIgnoreUntracked = GIT_SUBMODULE_IGNORE_UNTRACKED,
 	GTSubmoduleIgnoreDirty = GIT_SUBMODULE_IGNORE_DIRTY,
@@ -51,6 +51,8 @@ typedef NS_OPTIONS(NSInteger, GTSubmoduleStatus) {
 	GTSubmoduleStatusUntrackedFilesInWorkingDirectory = GIT_SUBMODULE_STATUS_WD_UNTRACKED
 };
 
+NS_ASSUME_NONNULL_BEGIN
+
 /// Represents a submodule within its parent repository.
 @interface GTSubmodule : NSObject
 
@@ -58,25 +60,23 @@ typedef NS_OPTIONS(NSInteger, GTSubmoduleStatus) {
 @property (nonatomic, strong, readonly) GTRepository *parentRepository;
 
 /// The current ignore rule for this submodule.
-///
-/// Setting this property will only update the rule in memory, not on disk.
-@property (nonatomic, assign) GTSubmoduleIgnoreRule ignoreRule;
+@property (nonatomic, readonly, assign) GTSubmoduleIgnoreRule ignoreRule;
 
 /// The OID that the submodule is pinned to in the parent repository's index.
 ///
 /// If the submodule is not in the index, this will be nil.
-@property (nonatomic, strong, readonly) GTOID *indexOID;
+@property (nonatomic, strong, readonly) GTOID * _Nullable indexOID;
 
 /// The OID that the submodule is pinned to in the parent repository's HEAD
 /// commit.
 ///
 /// If the submodule is not in HEAD, this will be nil.
-@property (nonatomic, strong, readonly) GTOID *HEADOID;
+@property (nonatomic, strong, readonly) GTOID * _Nullable HEADOID;
 
 /// The OID that is checked out in the submodule repository.
 ///
 /// If the submodule is not checked out, this will be nil.
-@property (nonatomic, strong, readonly) GTOID *workingDirectoryOID;
+@property (nonatomic, strong, readonly) GTOID * _Nullable workingDirectoryOID;
 
 /// The name of this submodule.
 @property (nonatomic, copy, readonly) NSString *name;
@@ -88,7 +88,9 @@ typedef NS_OPTIONS(NSInteger, GTSubmoduleStatus) {
 /// `.git/config` or `.gitmodules` file.
 @property (nonatomic, copy, readonly) NSString *URLString;
 
-/// Initializes the receiver to wrap the given submodule object.
+- (instancetype)init NS_UNAVAILABLE;
+
+/// Initializes the receiver to wrap the given submodule object. Designated initializer.
 ///
 /// submodule  - The submodule to wrap. The receiver will not own this object, so
 ///              it must not be freed while the GTSubmodule is alive. This must
@@ -97,7 +99,7 @@ typedef NS_OPTIONS(NSInteger, GTSubmoduleStatus) {
 ///              nil.
 ///
 /// Returns an initialized GTSubmodule, or nil if an error occurs.
-- (id)initWithGitSubmodule:(git_submodule *)submodule parentRepository:(GTRepository *)repository;
+- (instancetype _Nullable)initWithGitSubmodule:(git_submodule *)submodule parentRepository:(GTRepository *)repository NS_DESIGNATED_INITIALIZER;
 
 /// The underlying `git_submodule` object.
 - (git_submodule *)git_submodule __attribute__((objc_returns_inner_pointer));
@@ -108,6 +110,16 @@ typedef NS_OPTIONS(NSInteger, GTSubmoduleStatus) {
 ///
 /// Returns whether reloading succeeded.
 - (BOOL)reload:(NSError **)error;
+
+/// Write a new ignore rule to disk and get the resulting submodule. The
+/// receiver will not have the new ignore rule. To update the receiver, call
+/// `-reload:`.
+///
+/// ignoreRule - The ignore rule.
+/// error      - The error if one occurred.
+///
+/// Returns the updated submodule or nil if an error occurred.
+- (GTSubmodule * _Nullable)submoduleByUpdatingIgnoreRule:(GTSubmoduleIgnoreRule)ignoreRule error:(NSError **)error;
 
 /// Synchronizes the submodule repository's configuration files with the settings
 /// from the parent repository.
@@ -120,12 +132,18 @@ typedef NS_OPTIONS(NSInteger, GTSubmoduleStatus) {
 /// If the submodule is not currently checked out, this will fail.
 ///
 /// Returns the opened repository, or nil if an error occurs.
-- (GTRepository *)submoduleRepository:(NSError **)error;
+- (GTRepository * _Nullable)submoduleRepository:(NSError **)error;
 
-/// Determines the status for the submodule.
-///
-/// Returns the status, or `GTSubmoduleStatusUnknown` if an error occurs.
+/// Calls `-statusWithIgnoreRule:error:` with the submodule's ignore rule.
 - (GTSubmoduleStatus)status:(NSError **)error;
+
+/// Determine the status for the submodule using the given ignore rule.
+///
+/// ignoreRule - The ignore rule to use in calculating status.
+/// error      - The error if one occurred.
+///
+/// Returns the status or `GTSubmoduleStatusUnknown` if an error occurred.
+- (GTSubmoduleStatus)statusWithIgnoreRule:(GTSubmoduleIgnoreRule)ignoreRule error:(NSError **)error;
 
 /// Initializes the submodule by copying its information into the parent
 /// repository's `.git/config` file. This is equivalent to `git submodule init`
@@ -148,3 +166,5 @@ typedef NS_OPTIONS(NSInteger, GTSubmoduleStatus) {
 - (BOOL)addToIndex:(NSError **)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

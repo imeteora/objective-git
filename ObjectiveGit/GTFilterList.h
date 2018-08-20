@@ -14,19 +14,25 @@
 
 /// The options for loading a filter list. See libgit2 for more information.
 typedef NS_OPTIONS(NSInteger, GTFilterListOptions) {
-	GTFilterListOptionsDefault = GIT_FILTER_OPT_DEFAULT,
-	GTFilterListOptionsAllowUnsafe = GIT_FILTER_OPT_ALLOW_UNSAFE,
+	GTFilterListOptionsDefault = GIT_FILTER_DEFAULT,
+	GTFilterListOptionsAllowUnsafe = GIT_FILTER_ALLOW_UNSAFE,
 };
+
+NS_ASSUME_NONNULL_BEGIN
 
 /// An opaque list of filters that apply to a given path.
 @interface GTFilterList : NSObject
 
-/// Initializes the receiver to wrap the given `git_filter_list`.
+- (instancetype)init NS_UNAVAILABLE;
+
+/// Initializes the receiver to wrap the given `git_filter_list`. Designated initializer.
 ///
 /// filterList - The filter list to wrap and take ownership of. This filter list
 ///              will be automatically disposed when the receiver deallocates.
 ///              Must not be NULL.
-- (instancetype)initWithGitFilterList:(git_filter_list *)filterList;
+///
+/// Returns an initialized filter list, or nil if an error occurred.
+- (instancetype _Nullable)initWithGitFilterList:(git_filter_list *)filterList NS_DESIGNATED_INITIALIZER;
 
 /// Returns the underlying `git_filter_list`.
 - (git_filter_list *)git_filter_list __attribute__((objc_returns_inner_pointer));
@@ -37,7 +43,7 @@ typedef NS_OPTIONS(NSInteger, GTFilterListOptions) {
 /// error     - If not NULL, set to any error that occurs.
 ///
 /// Returns the filtered data, or nil if an error occurs.
-- (NSData *)applyToData:(NSData *)inputData error:(NSError **)error;
+- (NSData * _Nullable)applyToData:(NSData *)inputData error:(NSError **)error;
 
 /// Attempts to apply the filter list to a file in the given repository.
 ///
@@ -47,7 +53,7 @@ typedef NS_OPTIONS(NSInteger, GTFilterListOptions) {
 /// error        - If not NULL, set to any error that occurs.
 ///
 /// Returns the filtered data, or nil if an error occurs.
-- (NSData *)applyToPath:(NSString *)relativePath inRepository:(GTRepository *)repository error:(NSError **)error;
+- (NSData * _Nullable)applyToPath:(NSString *)relativePath inRepository:(GTRepository *)repository error:(NSError **)error;
 
 /// Attempts to apply the filter list to a blob.
 ///
@@ -55,6 +61,8 @@ typedef NS_OPTIONS(NSInteger, GTFilterListOptions) {
 /// error - If not NULL, set to any error that occurs.
 ///
 /// Returns the filtered data, or nil if an error occurs.
-- (NSData *)applyToBlob:(GTBlob *)blob error:(NSError **)error;
+- (NSData * _Nullable)applyToBlob:(GTBlob *)blob error:(NSError **)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

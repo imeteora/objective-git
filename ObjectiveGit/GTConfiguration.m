@@ -10,11 +10,13 @@
 #import "GTConfiguration+Private.h"
 #import "GTRepository.h"
 #import "GTRemote.h"
-#import "NSError+Git.h"
 #import "GTSignature.h"
+#import "NSData+Git.h"
+#import "NSError+Git.h"
 
 #import "git2/config.h"
 #import "git2/errors.h"
+#import "git2/buffer.h"
 
 @interface GTConfiguration ()
 @property (nonatomic, readonly, assign) git_config *git_config;
@@ -31,7 +33,12 @@
 	}
 }
 
-- (id)initWithGitConfig:(git_config *)config repository:(GTRepository *)repository {
+- (instancetype)init {
+	NSAssert(NO, @"Call to an unavailable initializer.");
+	return nil;
+}
+
+- (instancetype)initWithGitConfig:(git_config *)config repository:(GTRepository *)repository {
 	NSParameterAssert(config != NULL);
 
 	self = [super init];
@@ -58,11 +65,10 @@
 }
 
 - (NSString *)stringForKey:(NSString *)key {
-	const char *string = NULL;
-	git_config_get_string(&string, self.git_config, key.UTF8String);
-	if (string == NULL) return nil;
+	git_buf buffer = {};
+	if (git_config_get_string_buf(&buffer, self.git_config, key.UTF8String) != 0) return nil;
 
-	return [NSString stringWithUTF8String:string];
+	return [[NSString alloc] initWithData:[NSData git_dataWithBuffer:&buffer] encoding:NSUTF8StringEncoding];
 }
 
 - (void)setBool:(BOOL)b forKey:(NSString *)key {
@@ -128,10 +134,12 @@ static int configCallback(const git_config_entry *entry, void *payload) {
 	NSMutableArray *remotes = [NSMutableArray arrayWithCapacity:names.count];
 	for (size_t i = 0; i < names.count; i++) {
 		const char *name = names.strings[i];
-		git_remote *remote = NULL;
+		git_remote *git_remote = NULL;
 
-		if (git_remote_lookup(&remote, repository.git_repository, name) == 0) {
-			[remotes addObject:[[GTRemote alloc] initWithGitRemote:remote inRepository:repository]];
+		if (git_remote_lookup(&git_remote, repository.git_repository, name) == 0) {
+			GTRemote *remote = [[GTRemote alloc] initWithGitRemote:git_remote inRepository:repository];
+			if (remote)
+				[remotes addObject:remote];
 		}
 	}
 

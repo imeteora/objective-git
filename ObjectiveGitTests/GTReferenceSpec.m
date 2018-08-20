@@ -6,9 +6,9 @@
 //  Copyright (c) 2013 GitHub, Inc. All rights reserved.
 //
 
-#import <Nimble/Nimble.h>
-#import <ObjectiveGit/ObjectiveGit.h>
-#import <Quick/Quick.h>
+@import ObjectiveGit;
+@import Nimble;
+@import Quick;
 
 #import "QuickSpec+GTFixtures.h"
 
@@ -22,17 +22,17 @@ beforeEach(^{
 });
 
 it(@"should compare equal to the same reference", ^{
-	expect([[GTReference alloc] initByLookingUpReferenceNamed:@"refs/heads/master" inRepository:repository error:NULL]).to(equal([[GTReference alloc] initByLookingUpReferenceNamed:@"refs/heads/master" inRepository:repository error:NULL]));
+	expect([repository lookUpReferenceWithName:@"refs/heads/master" error:NULL]).to(equal([repository lookUpReferenceWithName:@"refs/heads/master" error:NULL]));
 });
 
 it(@"should compare unequal to a different reference", ^{
-	expect([[GTReference alloc] initByLookingUpReferenceNamed:@"refs/heads/master" inRepository:repository error:NULL]).notTo(equal([[GTReference alloc] initByLookingUpReferenceNamed:@"refs/remotes/origin/master" inRepository:repository error:NULL]));
+	expect([repository lookUpReferenceWithName:@"refs/heads/master" error:NULL]).notTo(equal([repository lookUpReferenceWithName:@"refs/remotes/origin/master" error:NULL]));
 });
 
 describe(@"remote property", ^{
 	it(@"should be YES for a remote-tracking branch", ^{
 		NSError *error = nil;
-		GTReference *ref = [[GTReference alloc] initByLookingUpReferenceNamed:@"refs/remotes/origin/master" inRepository:repository error:&error];
+		GTReference *ref = [repository lookUpReferenceWithName:@"refs/remotes/origin/master" error:&error];
 		expect(ref).notTo(beNil());
 		expect(error).to(beNil());
 
@@ -42,7 +42,7 @@ describe(@"remote property", ^{
 
 	it(@"should be NO for a local branch", ^{
 		NSError *error = nil;
-		GTReference *ref = [[GTReference alloc] initByLookingUpReferenceNamed:@"refs/heads/master" inRepository:repository error:&error];
+		GTReference *ref = [repository lookUpReferenceWithName:@"refs/heads/master" error:&error];
 		expect(ref).notTo(beNil());
 		expect(error).to(beNil());
 
@@ -62,10 +62,10 @@ describe(@"transformations", ^{
 		expect(repository).notTo(beNil());
 
 		NSError *error;
-		reference = [repository createReferenceNamed:testRefName fromOID:testRefOID committer:nil message:nil error:&error];
+		reference = [repository createReferenceNamed:testRefName fromOID:testRefOID message:nil error:&error];
 		expect(reference).notTo(beNil());
 		expect(reference.name).to(equal(testRefName));
-		expect(reference.targetSHA).to(equal(testRefOID.SHA));
+		expect(reference.targetOID).to(equal(testRefOID));
 	});
 
 	it(@"should be able to be renamed", ^{
@@ -74,16 +74,16 @@ describe(@"transformations", ^{
 		GTReference *renamedRef = [reference referenceByRenaming:newRefName error:NULL];
 		expect(renamedRef).notTo(beNil());
 		expect(renamedRef.name).to(equal(newRefName));
-		expect(renamedRef.targetSHA).to(equal(testRefOID.SHA));
+		expect(renamedRef.targetOID).to(equal(testRefOID));
 	});
 
 	it(@"should be able to change the target", ^{
 		NSString *newRefTarget = @"5b5b025afb0b4c913b4c338a42934a3863bf3644";
 
-		GTReference *updatedRef = [reference referenceByUpdatingTarget:newRefTarget committer:nil message:nil error:NULL];
+		GTReference *updatedRef = [reference referenceByUpdatingTarget:newRefTarget message:nil error:NULL];
 		expect(updatedRef).notTo(beNil());
 		expect(updatedRef.name).to(equal(testRefName));
-		expect(updatedRef.targetSHA).to(equal(newRefTarget));
+		expect(updatedRef.targetOID.SHA).to(equal(newRefTarget));
 	});
 });
 
@@ -119,7 +119,7 @@ __block GTRepository *bareRepository;
 
 void (^expectValidReference)(GTReference *ref, NSString *SHA, GTReferenceType type, NSString *name) = ^(GTReference *ref, NSString *SHA, GTReferenceType type, NSString *name) {
 	expect(ref).notTo(beNil());
-	expect(ref.targetSHA).to(equal(SHA));
+	expect(ref.targetOID.SHA).to(equal(SHA));
 	expect(@(ref.referenceType)).to(equal(@(type)));
 	expect(ref.name).to(equal(name));
 };
@@ -131,7 +131,7 @@ beforeEach(^{
 describe(@"+referenceByLookingUpReferenceNamed:inRepository:error:", ^{
 	it(@"should return a valid reference to a branch", ^{
 		NSError *error = nil;
-		GTReference *ref = [GTReference referenceByLookingUpReferencedNamed:@"refs/heads/master" inRepository:bareRepository error:&error];
+		GTReference *ref = [bareRepository lookUpReferenceWithName:@"refs/heads/master" error:&error];
 		expect(ref).notTo(beNil());
 		expect(error).to(beNil());
 
@@ -140,7 +140,7 @@ describe(@"+referenceByLookingUpReferenceNamed:inRepository:error:", ^{
 
 	it(@"should return a valid reference to a tag", ^{
 		NSError *error = nil;
-		GTReference *ref = [GTReference referenceByLookingUpReferencedNamed:@"refs/tags/v0.9" inRepository:bareRepository error:&error];
+		GTReference *ref = [bareRepository lookUpReferenceWithName:@"refs/tags/v0.9" error:&error];
 		expect(ref).notTo(beNil());
 		expect(error).to(beNil());
 
@@ -150,11 +150,11 @@ describe(@"+referenceByLookingUpReferenceNamed:inRepository:error:", ^{
 
 describe(@"creating", ^{
 	it(@"can create a reference from a symbolic reference", ^{
-		GTReference *target = [[GTReference alloc] initByLookingUpReferenceNamed:@"refs/heads/master" inRepository:bareRepository error:NULL];
+		GTReference *target = [bareRepository lookUpReferenceWithName:@"refs/heads/master" error:NULL];
 		expect(target).notTo(beNil());
 
 		NSError *error = nil;
-		GTReference *ref = [bareRepository createReferenceNamed:@"refs/heads/unit_test" fromReference:target committer:nil message:nil error:&error];
+		GTReference *ref = [bareRepository createReferenceNamed:@"refs/heads/unit_test" fromReference:target message:nil error:&error];
 		expect(error).to(beNil());
 		expect(ref).notTo(beNil());
 
@@ -166,7 +166,7 @@ describe(@"creating", ^{
 		GTOID *target = [[GTOID alloc] initWithSHA:@"36060c58702ed4c2a40832c51758d5344201d89a"];
 
 		NSError *error = nil;
-		GTReference *ref = [bareRepository createReferenceNamed:@"refs/heads/unit_test" fromOID:target committer:nil message:nil error:&error];
+		GTReference *ref = [bareRepository createReferenceNamed:@"refs/heads/unit_test" fromOID:target message:nil error:&error];
 		expect(error).to(beNil());
 		expect(ref).notTo(beNil());
 
@@ -179,7 +179,7 @@ describe(@"-deleteWithError:", ^{
 		GTOID *target = [[GTOID alloc] initWithSHA:@"36060c58702ed4c2a40832c51758d5344201d89a"];
 
 		NSError *error = nil;
-		GTReference *ref = [bareRepository createReferenceNamed:@"refs/heads/unit_test" fromOID:target committer:nil message:nil error:&error];
+		GTReference *ref = [bareRepository createReferenceNamed:@"refs/heads/unit_test" fromOID:target message:nil error:&error];
 
 		expect(error).to(beNil());
 		expect(ref).notTo(beNil());

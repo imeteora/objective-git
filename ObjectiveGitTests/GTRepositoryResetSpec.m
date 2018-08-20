@@ -6,9 +6,9 @@
 //  Copyright (c) 2014 GitHub, Inc. All rights reserved.
 //
 
-#import <Nimble/Nimble.h>
-#import <ObjectiveGit/ObjectiveGit.h>
-#import <Quick/Quick.h>
+@import ObjectiveGit;
+@import Nimble;
+@import Quick;
 
 #import "QuickSpec+GTFixtures.h"
 
@@ -25,7 +25,7 @@ describe(@"-resetPathspecs:toCommit:error:", ^{
 		countStagedFiles = ^{
 			__block NSUInteger count = 0;
 			[repository enumerateFileStatusWithOptions:nil error:NULL usingBlock:^(GTStatusDelta *headToIndex, GTStatusDelta *indexToWorkingDirectory, BOOL *stop) {
-				if (headToIndex.status != GTStatusDeltaStatusUnmodified) count++;
+				if (headToIndex.status != GTDeltaTypeUnmodified) count++;
 			}];
 
 			return count;
@@ -68,7 +68,7 @@ describe(@"-resetToCommit:resetType:error:", ^{
 
 		GTCommit *commit = [repository lookUpObjectBySHA:resetTargetSHA error:NULL];
 		expect(commit).notTo(beNil());
-		GTCommit *originalHeadCommit = [repository lookUpObjectBySHA:originalHead.targetSHA error:NULL];
+		GTCommit *originalHeadCommit = [repository lookUpObjectByOID:originalHead.targetOID error:NULL];
 		expect(originalHeadCommit).notTo(beNil());
 
 		BOOL success = [repository resetToCommit:commit resetType:GTRepositoryResetTypeSoft error:&error];
@@ -77,14 +77,14 @@ describe(@"-resetToCommit:resetType:error:", ^{
 
 		GTReference *head = [repository headReferenceWithError:&error];
 		expect(head).notTo(beNil());
-		expect(head.targetSHA).to(equal(resetTargetSHA));
+		expect(head.targetOID.SHA).to(equal(resetTargetSHA));
 
 		success = [repository resetToCommit:originalHeadCommit resetType:GTRepositoryResetTypeSoft error:&error];
 		expect(@(success)).to(beTruthy());
 		expect(error).to(beNil());
 
 		head = [repository headReferenceWithError:&error];
-		expect(head.targetSHA).to(equal(originalHead.targetSHA));
+		expect(head.targetOID).to(equal(originalHead.targetOID));
 	});
 });
 

@@ -6,9 +6,9 @@
 //  Copyright (c) 2013 GitHub, Inc. All rights reserved.
 //
 
-#import <Nimble/Nimble.h>
-#import <ObjectiveGit/ObjectiveGit.h>
-#import <Quick/Quick.h>
+@import ObjectiveGit;
+@import Nimble;
+@import Quick;
 
 #import "QuickSpec+GTFixtures.h"
 
@@ -48,7 +48,7 @@ it(@"should keep the git_oid alive even if the object goes out of scope", ^{
 	const git_oid *git_oid = NULL;
 
 	{
-		GTOID *testOID __attribute__((objc_precise_lifetime)) = [[GTOID alloc] initWithSHA:testSHA];
+		GTOID *testOID = [[GTOID alloc] initWithSHA:testSHA];
 		git_oid = testOID.git_oid;
 	}
 

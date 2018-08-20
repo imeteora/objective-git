@@ -25,6 +25,11 @@
 
 @implementation GTDiffHunk
 
+- (instancetype)init {
+	NSAssert(NO, @"Call to an unavailable initializer.");
+	return nil;
+}
+
 - (instancetype)initWithPatch:(GTDiffPatch *)patch hunkIndex:(NSUInteger)hunkIndex {
 	NSParameterAssert(patch != nil);
 
@@ -35,10 +40,16 @@
 	int result = git_patch_get_hunk(&_git_hunk, &gitLineCount, patch.git_patch, hunkIndex);
 	if (result != GIT_OK) return nil;
 	_lineCount = gitLineCount;
+	_oldStart = self.git_hunk->old_start;
+	_oldLines = self.git_hunk->old_lines;
+	_newStart = self.git_hunk->new_start;
+	_newLines = self.git_hunk->new_lines;
 
 	_patch = patch;
 	_hunkIndex = hunkIndex;
-	_header = [[[NSString alloc] initWithBytes:self.git_hunk->header length:self.git_hunk->header_len encoding:NSUTF8StringEncoding] stringByTrimmingCharactersInSet:NSCharacterSet.newlineCharacterSet];
+	NSString *hunkHeader = [[[NSString alloc] initWithBytes:self.git_hunk->header length:self.git_hunk->header_len encoding:NSUTF8StringEncoding] stringByTrimmingCharactersInSet:NSCharacterSet.newlineCharacterSet];
+	NSAssert(hunkHeader != nil, @"Failed to build hunk header");
+	_header = hunkHeader;
 
 	return self;
 }

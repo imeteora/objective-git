@@ -56,7 +56,12 @@
 
 #pragma mark API
 
-- (id)initWithRepository:(GTRepository *)repo error:(NSError **)error {
+- (instancetype)init {
+	NSAssert(NO, @"Call to an unavailable initializer.");
+	return nil;
+}
+
+- (instancetype)initWithRepository:(GTRepository *)repo error:(NSError **)error {
 	NSParameterAssert(repo != nil);
 
 	self = [super init];

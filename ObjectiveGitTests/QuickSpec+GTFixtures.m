@@ -6,9 +6,11 @@
 //  Copyright (c) 2013 GitHub, Inc. All rights reserved.
 //
 
-#import <ObjectiveGit/ObjectiveGit.h>
 #import "QuickSpec+GTFixtures.h"
-#import <objc/runtime.h>
+
+@import ObjectiveC;
+@import ObjectiveGit;
+@import ZipArchive;
 
 static const NSInteger FixturesErrorUnzipFailed = 666;
 
@@ -63,8 +65,12 @@ static NSString * const FixturesErrorDomain = @"com.objectivegit.Fixtures";
 
 #pragma mark Fixtures
 
+- (NSString *)rootTempDirectory {
+	return [NSTemporaryDirectory() stringByAppendingPathComponent:@"com.libgit2.objectivegit"];
+}
+
 - (void)setUpTempDirectoryPath {
-	self.tempDirectoryPath = [[NSTemporaryDirectory() stringByAppendingPathComponent:@"com.libgit2.objectivegit"] stringByAppendingPathComponent:NSProcessInfo.processInfo.globallyUniqueString];
+	self.tempDirectoryPath = [self.rootTempDirectory stringByAppendingPathComponent:NSProcessInfo.processInfo.globallyUniqueString];
 
 	NSError *error = nil;
 	BOOL success = [NSFileManager.defaultManager createDirectoryAtPath:self.tempDirectoryPath withIntermediateDirectories:YES attributes:nil error:&error];
@@ -83,9 +89,15 @@ static NSString * const FixturesErrorDomain = @"com.objectivegit.Fixtures";
 
 	NSString *zippedRepositoriesPath = [[NSBundle bundleForClass:self.class] pathForResource:@"fixtures" ofType:@"zip"];
 
-	error = nil;
-	success = [self unzipFile:repositoryName fromArchiveAtPath:zippedRepositoriesPath intoDirectory:self.repositoryFixturesPath error:&error];
-	XCTAssertTrue(success, @"Couldn't unzip fixture \"%@\" from %@ to %@: %@", repositoryName, zippedRepositoriesPath, self.repositoryFixturesPath, error);
+	NSString *cleanRepositoryPath = [self.rootTempDirectory stringByAppendingPathComponent:@"clean_repository"];
+	if (![NSFileManager.defaultManager fileExistsAtPath:cleanRepositoryPath isDirectory:nil]) {
+		error = nil;
+		success = [self unzipFromArchiveAtPath:zippedRepositoriesPath intoDirectory:cleanRepositoryPath error:&error];
+		XCTAssertTrue(success, @"Couldn't unzip fixture \"%@\" from %@ to %@: %@", repositoryName, zippedRepositoriesPath, cleanRepositoryPath, error);
+	}
+
+	success = [[NSFileManager defaultManager] copyItemAtPath:[cleanRepositoryPath stringByAppendingPathComponent:repositoryName] toPath:path error:&error];
+	XCTAssertTrue(success, @"Couldn't copy directory %@", error);
 }
 
 - (NSString *)pathForFixtureRepositoryNamed:(NSString *)repositoryName {
@@ -94,26 +106,22 @@ static NSString * const FixturesErrorDomain = @"com.objectivegit.Fixtures";
 	return [self.repositoryFixturesPath stringByAppendingPathComponent:repositoryName];
 }
 
-- (BOOL)unzipFile:(NSString *)member fromArchiveAtPath:(NSString *)zipPath intoDirectory:(NSString *)destinationPath error:(NSError **)error {
-	NSTask *task = [[NSTask alloc] init];
-	task.launchPath = @"/usr/bin/unzip";
-	task.arguments = @[ @"-qq", @"-d", destinationPath, zipPath, [member stringByAppendingString:@"*"] ];
+- (BOOL)unzipFromArchiveAtPath:(NSString *)zipPath intoDirectory:(NSString *)destinationPath error:(NSError **)error {
+	BOOL success = [SSZipArchive unzipFileAtPath:zipPath toDestination:destinationPath overwrite:YES password:nil error:error];
 
-	[task launch];
-	[task waitUntilExit];
-
-	BOOL success = (task.terminationStatus == 0);
 	if (!success) {
-		if (error != NULL) *error = [NSError errorWithDomain:FixturesErrorDomain code:FixturesErrorUnzipFailed userInfo:@{ NSLocalizedDescriptionKey: NSLocalizedString(@"Unzip failed", @"") }];
+		NSLog(@"Unzip failed");
+		return NO;
 	}
 
-	return success;
+	return YES;
 }
 
 #pragma mark API
 
 - (GTRepository *)fixtureRepositoryNamed:(NSString *)name {
-	GTRepository *repository = [[GTRepository alloc] initWithURL:[NSURL fileURLWithPath:[self pathForFixtureRepositoryNamed:name]] error:NULL];
+	NSURL *url = [NSURL fileURLWithPath:[self pathForFixtureRepositoryNamed:name]];
+	GTRepository *repository = [[GTRepository alloc] initWithURL:url error:NULL];
 	XCTAssertNotNil(repository, @"Couldn't create a repository for %@", name);
 	return repository;
 }

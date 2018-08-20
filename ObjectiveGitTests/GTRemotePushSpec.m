@@ -6,41 +6,12 @@
 //  Copyright (c) 2014 GitHub, Inc. All rights reserved.
 //
 
-#import <Nimble/Nimble.h>
-#import <ObjectiveGit/ObjectiveGit.h>
-#import <Quick/Quick.h>
+@import ObjectiveGit;
+@import Nimble;
+@import Quick;
 
 #import "QuickSpec+GTFixtures.h"
-
-// Helper to quickly create commits
-GTCommit *(^createCommitInRepository)(NSString *, NSData *, NSString *, GTRepository *) = ^ GTCommit * (NSString *message, NSData *fileData, NSString *fileName, GTRepository *repo) {
-	GTTreeBuilder *treeBuilder = [[GTTreeBuilder alloc] initWithTree:nil repository:repo error:nil];
-	[treeBuilder addEntryWithData:fileData fileName:fileName fileMode:GTFileModeBlob error:nil];
-
-	GTTree *testTree = [treeBuilder writeTree:nil];
-
-	// We need the parent commit to make the new one
-	GTReference *headReference = [repo headReferenceWithError:nil];
-
-	GTEnumerator *commitEnum = [[GTEnumerator alloc] initWithRepository:repo error:nil];
-	[commitEnum pushSHA:[headReference targetSHA] error:nil];
-	GTCommit *parent = [commitEnum nextObject];
-
-	GTCommit *testCommit = [repo createCommitWithTree:testTree message:message parents:@[ parent ] updatingReferenceNamed:headReference.name error:nil];
-	expect(testCommit).notTo(beNil());
-
-	return testCommit;
-};
-
-GTBranch *(^localBranchWithName)(NSString *, GTRepository *) = ^ GTBranch * (NSString *branchName, GTRepository *repo) {
-	NSString *reference = [GTBranch.localNamePrefix stringByAppendingString:branchName];
-	NSArray *branches = [repo branchesWithPrefix:reference error:NULL];
-	expect(branches).notTo(beNil());
-	expect(@(branches.count)).to(equal(@1));
-	expect(((GTBranch *)branches[0]).shortName).to(equal(branchName));
-
-	return branches[0];
-};
+#import "GTUtilityFunctions.h"
 
 #pragma mark - GTRemotePushSpec
 
@@ -68,7 +39,7 @@ describe(@"pushing", ^{
 			// Make a bare clone to serve as the remote
 			remoteRepoURL = [notBareRepo.gitDirectoryURL.URLByDeletingLastPathComponent URLByAppendingPathComponent:@"bare_remote_repo.git"];
 			NSDictionary *options = @{ GTRepositoryCloneOptionsBare: @1 };
-			remoteRepo = [GTRepository cloneFromURL:notBareRepo.gitDirectoryURL toWorkingDirectory:remoteRepoURL options:options error:&error transferProgressBlock:NULL checkoutProgressBlock:NULL];
+			remoteRepo = [GTRepository cloneFromURL:notBareRepo.gitDirectoryURL toWorkingDirectory:remoteRepoURL options:options error:&error transferProgressBlock:NULL];
 			expect(error).to(beNil());
 			expect(remoteRepo).notTo(beNil());
 			expect(@(remoteRepo.isBare)).to(beTruthy()); // that's better
@@ -77,7 +48,7 @@ describe(@"pushing", ^{
 			expect(localRepoURL).notTo(beNil());
 
 			// Local clone for testing pushes
-			localRepo = [GTRepository cloneFromURL:remoteRepoURL toWorkingDirectory:localRepoURL options:nil error:&error transferProgressBlock:NULL checkoutProgressBlock:NULL];
+			localRepo = [GTRepository cloneFromURL:remoteRepoURL toWorkingDirectory:localRepoURL options:nil error:&error transferProgressBlock:NULL];
 
 			expect(error).to(beNil());
 			expect(localRepo).notTo(beNil());
@@ -115,7 +86,7 @@ describe(@"pushing", ^{
 				}];
 				expect(error).to(beNil());
 				expect(@(result)).to(beTruthy());
-				expect(@(transferProgressed)).to(beFalsy()); // Local transport doesn't currently call progress callbacks
+				expect(@(transferProgressed)).to(beTruthy());
 
 				// Same number of commits after push, refresh branch first
 				remoteMasterBranch = localBranchWithName(@"master", remoteRepo);
@@ -152,7 +123,7 @@ describe(@"pushing", ^{
 			}];
 			expect(error).to(beNil());
 			expect(@(result)).to(beTruthy());
-			expect(@(transferProgressed)).to(beFalsy()); // Local transport doesn't currently call progress callbacks
+			expect(@(transferProgressed)).to(beTruthy());
 
 			// Number of commits on tracking branch after push
 			localTrackingBranch = [masterBranch trackingBranchWithError:&error success:&success];
@@ -186,7 +157,7 @@ describe(@"pushing", ^{
 			GTBranch *branch1 = localBranchWithName(@"master", localRepo);
 
 			// Create refs/heads/new_master on local
-			[localRepo createReferenceNamed:@"refs/heads/new_master" fromReference:branch1.reference committer:localRepo.userSignatureForNow message:@"Create new_master branch" error:&error];
+			[localRepo createReferenceNamed:@"refs/heads/new_master" fromReference:branch1.reference message:@"Create new_master branch" error:&error];
 			GTBranch *branch2 = localBranchWithName(@"new_master", localRepo);
 
 			BOOL result = [localRepo pushBranches:@[ branch1, branch2 ] toRemote:remote withOptions:nil error:&error progress:NULL];

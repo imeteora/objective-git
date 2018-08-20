@@ -6,9 +6,9 @@
 //  Copyright (c) 2013 GitHub, Inc. All rights reserved.
 //
 
-#import <Nimble/Nimble.h>
-#import <ObjectiveGit/ObjectiveGit.h>
-#import <Quick/Quick.h>
+@import ObjectiveGit;
+@import Nimble;
+@import Quick;
 
 #import "QuickSpec+GTFixtures.h"
 
@@ -97,6 +97,30 @@ describe(@"tree enumeration", ^{
 it(@"should return nil for non-existent entries", ^{
 	expect([tree entryAtIndex:99]).to(beNil());
 	expect([tree entryWithName:@"_does not exist"]).to(beNil());
+});
+
+describe(@"fetching entries from paths", ^{
+	it(@"should be able to fetch existing paths",^{
+		NSError *error = nil;
+		GTTreeEntry *entry;
+		
+		entry = [tree entryWithPath:@"README" error:&error];
+		expect(error).to(beNil());
+		expect(entry).notTo(beNil());
+		
+		entry = [tree entryWithPath:@"subdir/README" error:&error];
+		expect(error).to(beNil());
+		expect(entry).notTo(beNil());
+	});
+	
+	it(@"should return nil and fill error for non-existent paths",^{
+		NSError *error = nil;
+		GTTreeEntry *entry;
+		
+		entry = [tree entryWithPath:@"does/not/exist" error:&error];
+		expect(error).notTo(beNil());
+		expect(entry).to(beNil());
+	});
 });
 
 afterEach(^{

@@ -17,33 +17,38 @@
 
 /// The type of change that this delta represents.
 ///
-/// GTDiffFileDeltaUnmodified - No Change.
-/// GTDiffFileDeltaAdded      - The file was added to the index.
-/// GTDiffFileDeltaDeleted    - The file was removed from the working directory.
-/// GTDiffFileDeltaModified   - The file was modified.
-/// GTDiffFileDeltaRenamed    - The file has been renamed.
-/// GTDiffFileDeltaCopied     - The file was duplicated.
-/// GTDiffFileDeltaIgnored    - The file was ignored by git.
-/// GTDiffFileDeltaUntracked  - The file has been added to the working directory
+/// GTDeltaTypeUnmodified - No Change.
+/// GTDeltaTypeAdded      - The file was added to the index.
+/// GTDeltaTypeDeleted    - The file was removed from the working directory.
+/// GTDeltaTypeModified   - The file was modified.
+/// GTDeltaTypeRenamed    - The file has been renamed.
+/// GTDeltaTypeCopied     - The file was duplicated.
+/// GTDeltaTypeIgnored    - The file was ignored by git.
+/// GTDeltaTypeUntracked  - The file has been added to the working directory
 ///                             and is therefore currently untracked.
-/// GTDiffFileDeltaTypeChange - The file has changed from a blob to either a
+/// GTDeltaTypeTypeChange - The file has changed from a blob to either a
 ///                             submodule, symlink or directory. Or vice versa.
-typedef NS_ENUM(NSInteger, GTDiffDeltaType) {
-	GTDiffFileDeltaUnmodified = GIT_DELTA_UNMODIFIED,
-	GTDiffFileDeltaAdded = GIT_DELTA_ADDED,
-	GTDiffFileDeltaDeleted = GIT_DELTA_DELETED,
-	GTDiffFileDeltaModified = GIT_DELTA_MODIFIED,
-	GTDiffFileDeltaRenamed = GIT_DELTA_RENAMED,
-	GTDiffFileDeltaCopied = GIT_DELTA_COPIED,
-	GTDiffFileDeltaIgnored = GIT_DELTA_IGNORED,
-	GTDiffFileDeltaUntracked = GIT_DELTA_UNTRACKED,
-	GTDiffFileDeltaTypeChange = GIT_DELTA_TYPECHANGE,
+/// GTDeltaTypeConflicted - The file is conflicted in the working directory.
+typedef NS_ENUM(NSInteger, GTDeltaType) {
+	GTDeltaTypeUnmodified = GIT_DELTA_UNMODIFIED,
+	GTDeltaTypeAdded = GIT_DELTA_ADDED,
+	GTDeltaTypeDeleted = GIT_DELTA_DELETED,
+	GTDeltaTypeModified = GIT_DELTA_MODIFIED,
+	GTDeltaTypeRenamed = GIT_DELTA_RENAMED,
+	GTDeltaTypeCopied = GIT_DELTA_COPIED,
+	GTDeltaTypeIgnored = GIT_DELTA_IGNORED,
+	GTDeltaTypeUntracked = GIT_DELTA_UNTRACKED,
+	GTDeltaTypeTypeChange = GIT_DELTA_TYPECHANGE,
+	GTDeltaTypeUnreadable = GIT_DELTA_UNREADABLE,
+	GTDeltaTypeConflicted = GIT_DELTA_CONFLICTED,
 };
+
+NS_ASSUME_NONNULL_BEGIN
 
 /// A class representing a single change within a diff.
 ///
 /// The change may not be simply a change of text within a given file, it could
-/// be that the file was renamed, or added to the index. See `GTDiffDeltaType`
+/// be that the file was renamed, or added to the index. See `GTDeltaType`
 /// for the types of change represented.
 @interface GTDiffDelta : NSObject
 
@@ -58,15 +63,17 @@ typedef NS_ENUM(NSInteger, GTDiffDeltaType) {
 @property (nonatomic, assign, readonly) GTDiffFileFlag flags;
 
 /// The file to the "left" of the diff.
-@property (nonatomic, readonly, copy) GTDiffFile *oldFile;
+@property (nonatomic, readonly, copy) GTDiffFile * _Nullable oldFile;
 
 /// The file to the "right" of the diff.
-@property (nonatomic, readonly, copy) GTDiffFile *newFile __attribute__((ns_returns_not_retained));
+@property (nonatomic, readonly, copy) GTDiffFile * _Nullable newFile __attribute__((ns_returns_not_retained));
 
 /// The type of change that this delta represents.
 ///
 /// Think "status" as in `git status`.
-@property (nonatomic, readonly) GTDiffDeltaType type;
+@property (nonatomic, readonly) GTDeltaType type;
+
+@property (nonatomic, readonly, assign) double similarity;
 
 /// Diffs the given blob and data buffer.
 ///
@@ -81,7 +88,7 @@ typedef NS_ENUM(NSInteger, GTDiffDeltaType) {
 /// error       - If not NULL, set to any error that occurs.
 ///
 /// Returns a diff delta, or nil if an error occurs.
-+ (instancetype)diffDeltaFromBlob:(GTBlob *)oldBlob forPath:(NSString *)oldBlobPath toBlob:(GTBlob *)newBlob forPath:(NSString *)newBlobPath options:(NSDictionary *)options error:(NSError **)error;
++ (instancetype _Nullable)diffDeltaFromBlob:(GTBlob * _Nullable)oldBlob forPath:(NSString * _Nullable)oldBlobPath toBlob:(GTBlob * _Nullable)newBlob forPath:(NSString * _Nullable)newBlobPath options:(NSDictionary * _Nullable)options error:(NSError **)error;
 
 /// Diffs the given blob and data buffer.
 ///
@@ -96,7 +103,7 @@ typedef NS_ENUM(NSInteger, GTDiffDeltaType) {
 /// error    - If not NULL, set to any error that occurs.
 ///
 /// Returns a diff delta, or nil if an error occurs.
-+ (instancetype)diffDeltaFromBlob:(GTBlob *)blob forPath:(NSString *)blobPath toData:(NSData *)data forPath:(NSString *)dataPath options:(NSDictionary *)options error:(NSError **)error;
++ (instancetype _Nullable)diffDeltaFromBlob:(GTBlob * _Nullable)blob forPath:(NSString * _Nullable)blobPath toData:(NSData * _Nullable)data forPath:(NSString * _Nullable)dataPath options:(NSDictionary * _Nullable)options error:(NSError **)error;
 
 /// Diffs the given data buffers.
 ///
@@ -111,10 +118,17 @@ typedef NS_ENUM(NSInteger, GTDiffDeltaType) {
 /// error       - If not NULL, set to any error that occurs.
 ///
 /// Returns a diff delta, or nil if an error occurs.
-+ (instancetype)diffDeltaFromData:(NSData *)oldData forPath:(NSString *)oldDataPath toData:(NSData *)newData forPath:(NSString *)newDataPath options:(NSDictionary *)options error:(NSError **)error;
++ (instancetype _Nullable)diffDeltaFromData:(NSData * _Nullable)oldData forPath:(NSString * _Nullable)oldDataPath toData:(NSData * _Nullable)newData forPath:(NSString * _Nullable)newDataPath options:(NSDictionary * _Nullable)options error:(NSError **)error;
+
+- (instancetype)init NS_UNAVAILABLE;
 
 /// Initializes the receiver to wrap the delta at the given index.
-- (instancetype)initWithDiff:(GTDiff *)diff deltaIndex:(NSUInteger)deltaIndex;
+///
+/// diff       - The diff which contains the delta to wrap. Must not be nil.
+/// deltaIndex - The index of the delta within the diff.
+///
+/// Returns a diff delta, or nil if an error occurs.
+- (instancetype _Nullable)initWithDiff:(GTDiff *)diff deltaIndex:(NSUInteger)deltaIndex;
 
 /// Creates a patch from a text delta.
 ///
@@ -123,6 +137,8 @@ typedef NS_ENUM(NSInteger, GTDiffDeltaType) {
 /// error - If not NULL, set to any error that occurs.
 ///
 /// Returns a new patch, or nil if an error occurs.
-- (GTDiffPatch *)generatePatch:(NSError **)error;
+- (GTDiffPatch * _Nullable)generatePatch:(NSError **)error;
 
 @end
+
+NS_ASSUME_NONNULL_END

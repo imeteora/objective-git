@@ -6,13 +6,17 @@
 //  Copyright (c) 2013 GitHub, Inc. All rights reserved.
 //
 
-#import <Nimble/Nimble.h>
-#import <ObjectiveGit/ObjectiveGit.h>
-#import <Quick/Quick.h>
+@import ObjectiveGit;
+@import Nimble;
+@import Quick;
 
 #import "QuickSpec+GTFixtures.h"
 
 QuickSpecBegin(GTRepositorySpec)
+
+static NSString * const readmeFile = @"README.md";
+static NSString * const readme1File = @"README1.txt";
+
 
 __block GTRepository *repository;
 
@@ -91,7 +95,14 @@ describe(@"+cloneFromURL:toWorkingDirectory:options:error:transferProgressBlock:
 
 		it(@"should handle normal clones", ^{
 			NSError *error = nil;
-			repository = [GTRepository cloneFromURL:originURL toWorkingDirectory:workdirURL options:@{ GTRepositoryCloneOptionsCloneLocal: @YES } error:&error transferProgressBlock:transferProgressBlock checkoutProgressBlock:checkoutProgressBlock];
+			GTCheckoutOptions *checkoutOptions = [GTCheckoutOptions checkoutOptionsWithStrategy:GTCheckoutStrategySafe];
+			checkoutOptions.progressBlock = checkoutProgressBlock;
+
+			NSDictionary *cloneOptions = @{
+										   GTRepositoryCloneOptionsCloneLocal: @YES,
+										   GTRepositoryCloneOptionsCheckoutOptions: checkoutOptions,
+										   };
+			repository = [GTRepository cloneFromURL:originURL toWorkingDirectory:workdirURL options:cloneOptions error:&error transferProgressBlock:transferProgressBlock];
 			expect(repository).notTo(beNil());
 			expect(error).to(beNil());
 			expect(@(transferProgressCalled)).to(beTruthy());
@@ -102,14 +113,21 @@ describe(@"+cloneFromURL:toWorkingDirectory:options:error:transferProgressBlock:
 			GTReference *head = [repository headReferenceWithError:&error];
 			expect(head).notTo(beNil());
 			expect(error).to(beNil());
-			expect(head.targetSHA).to(equal(@"36060c58702ed4c2a40832c51758d5344201d89a"));
+			expect(head.targetOID.SHA).to(equal(@"36060c58702ed4c2a40832c51758d5344201d89a"));
 			expect(@(head.referenceType)).to(equal(@(GTReferenceTypeOid)));
 		});
 
 		it(@"should handle bare clones", ^{
 			NSError *error = nil;
-			NSDictionary *options = @{ GTRepositoryCloneOptionsBare: @YES, GTRepositoryCloneOptionsCloneLocal: @YES };
-			repository = [GTRepository cloneFromURL:originURL toWorkingDirectory:workdirURL options:options error:&error transferProgressBlock:transferProgressBlock checkoutProgressBlock:checkoutProgressBlock];
+			GTCheckoutOptions *checkoutOptions = [GTCheckoutOptions checkoutOptionsWithStrategy:GTCheckoutStrategySafe];
+			checkoutOptions.progressBlock = checkoutProgressBlock;
+
+			NSDictionary *options = @{
+									  GTRepositoryCloneOptionsBare: @YES,
+									  GTRepositoryCloneOptionsCloneLocal: @YES,
+									  GTRepositoryCloneOptionsCheckoutOptions: checkoutOptions,
+									  };
+			repository = [GTRepository cloneFromURL:originURL toWorkingDirectory:workdirURL options:options error:&error transferProgressBlock:transferProgressBlock];
 			expect(repository).notTo(beNil());
 			expect(error).to(beNil());
 			expect(@(transferProgressCalled)).to(beTruthy());
@@ -120,13 +138,16 @@ describe(@"+cloneFromURL:toWorkingDirectory:options:error:transferProgressBlock:
 			GTReference *head = [repository headReferenceWithError:&error];
 			expect(head).notTo(beNil());
 			expect(error).to(beNil());
-			expect(head.targetSHA).to(equal(@"36060c58702ed4c2a40832c51758d5344201d89a"));
+			expect(head.targetOID.SHA).to(equal(@"36060c58702ed4c2a40832c51758d5344201d89a"));
 			expect(@(head.referenceType)).to(equal(@(GTReferenceTypeOid)));
 		});
 
 		it(@"should have set a valid remote URL", ^{
 			NSError *error = nil;
-			repository = [GTRepository cloneFromURL:originURL toWorkingDirectory:workdirURL options:nil error:&error transferProgressBlock:transferProgressBlock checkoutProgressBlock:checkoutProgressBlock];
+			GTCheckoutOptions *checkoutOptions = [GTCheckoutOptions checkoutOptionsWithStrategy:GTCheckoutStrategySafe];
+			checkoutOptions.progressBlock = checkoutProgressBlock;
+
+			repository = [GTRepository cloneFromURL:originURL toWorkingDirectory:workdirURL options:@{ GTRepositoryCloneOptionsCheckoutOptions: checkoutOptions } error:&error transferProgressBlock:transferProgressBlock];
 			expect(repository).notTo(beNil());
 			expect(error).to(beNil());
 
@@ -163,7 +184,14 @@ describe(@"+cloneFromURL:toWorkingDirectory:options:error:transferProgressBlock:
 					return cred;
 				}];
 
-				repository = [GTRepository cloneFromURL:originURL toWorkingDirectory:workdirURL options:@{GTRepositoryCloneOptionsCredentialProvider: provider} error:&error transferProgressBlock:transferProgressBlock checkoutProgressBlock:checkoutProgressBlock];
+				GTCheckoutOptions *checkoutOptions = [GTCheckoutOptions checkoutOptionsWithStrategy:GTCheckoutStrategySafe];
+				checkoutOptions.progressBlock = checkoutProgressBlock;
+				NSDictionary *cloneOptions = @{
+											   GTRepositoryCloneOptionsCredentialProvider: provider,
+											   GTRepositoryCloneOptionsCheckoutOptions: checkoutOptions,
+											   };
+
+				repository = [GTRepository cloneFromURL:originURL toWorkingDirectory:workdirURL options:cloneOptions error:&error transferProgressBlock:transferProgressBlock];
 				expect(repository).notTo(beNil());
 				expect(error).to(beNil());
 				expect(@(transferProgressCalled)).to(beTruthy());
@@ -183,7 +211,7 @@ describe(@"-headReferenceWithError:", ^{
 		GTReference *head = [self.bareFixtureRepository headReferenceWithError:&error];
 		expect(head).notTo(beNil());
 		expect(error).to(beNil());
-		expect(head.targetSHA).to(equal(@"36060c58702ed4c2a40832c51758d5344201d89a"));
+		expect(head.targetOID.SHA).to(equal(@"36060c58702ed4c2a40832c51758d5344201d89a"));
 		expect(@(head.referenceType)).to(equal(@(GTReferenceTypeOid)));
 	});
 
@@ -232,6 +260,48 @@ describe(@"-preparedMessage", ^{
 	});
 });
 
+describe(@"-contentsOfDiffWithAncestor:ourSide:theirSide:error:", ^{
+	it(@"should produce a nice merge conflict description", ^{
+		NSURL *mainURL = [repository.fileURL URLByAppendingPathComponent:@"main.m"];
+		NSData *mainData = [[NSFileManager defaultManager] contentsAtPath:mainURL.path];
+		expect(mainData).notTo(beNil());
+
+		NSString *mainString = [[NSString alloc] initWithData:mainData encoding:NSUTF8StringEncoding];
+		NSData *masterData = [[mainString stringByReplacingOccurrencesOfString:@"return" withString:@"//The meaning of life is 41\n    return"] dataUsingEncoding:NSUTF8StringEncoding];
+		NSData *otherData = [[mainString stringByReplacingOccurrencesOfString:@"return" withString:@"//The meaning of life is 42\n    return"] dataUsingEncoding:NSUTF8StringEncoding];
+
+		expect(@([[NSFileManager defaultManager] createFileAtPath:mainURL.path contents:masterData attributes:nil])).to(beTruthy());
+
+		GTIndex *index = [repository indexWithError:NULL];
+		expect(@([index addFile:mainURL.lastPathComponent error:NULL])).to(beTruthy());
+		GTReference *head = [repository headReferenceWithError:NULL];
+		GTCommit *parent = [repository lookUpObjectByOID:head.targetOID objectType:GTObjectTypeCommit error:NULL];
+		expect(parent).toNot(beNil());
+		GTTree *masterTree = [index writeTree:NULL];
+		expect(masterTree).toNot(beNil());
+
+		GTBranch *otherBranch = [repository lookUpBranchWithName:@"other-branch" type:GTBranchTypeLocal success:NULL error:NULL];
+		expect(otherBranch).toNot(beNil());
+		expect(@([repository checkoutReference:otherBranch.reference options:nil error:NULL])).to(beTruthy());
+
+		expect(@([[NSFileManager defaultManager] createFileAtPath:mainURL.path contents:otherData attributes:nil])).to(beTruthy());
+
+		index = [repository indexWithError:NULL];
+		expect(@([index addFile:mainURL.lastPathComponent error:NULL])).to(beTruthy());
+		GTTree *otherTree = [index writeTree:NULL];
+		expect(otherTree).toNot(beNil());
+
+		GTIndex *conflictIndex = [otherTree merge:masterTree ancestor:parent.tree error:NULL];
+		expect(@([conflictIndex hasConflicts])).to(beTruthy());
+
+		[conflictIndex enumerateConflictedFilesWithError:NULL usingBlock:^(GTIndexEntry * _Nonnull ancestor, GTIndexEntry * _Nonnull ours, GTIndexEntry * _Nonnull theirs, BOOL * _Nonnull stop) {
+
+			NSString *conflictString = [repository contentsOfDiffWithAncestor:ancestor ourSide:ours theirSide:theirs error:NULL];
+			expect(conflictString).to(equal(@"//\n//  main.m\n//  Test\n//\n//  Created by Joe Ricioppo on 9/28/10.\n//  Copyright 2010 __MyCompanyName__. All rights reserved.\n//\n\n#import <Cocoa/Cocoa.h>\n\nint main(int argc, char *argv[])\n{\n<<<<<<< file.txt\n    //The meaning of life is 42\n=======\n    //The meaning of life is 41\n>>>>>>> file.txt\n    return NSApplicationMain(argc,  (const char **) argv);\n}\n123456789\n123456789\n123456789\n123456789!blah!\n"));
+		}];
+	});
+});
+
 describe(@"-mergeBaseBetweenFirstOID:secondOID:error:", ^{
 	it(@"should find the merge base between two branches", ^{
 		NSError *error = nil;
@@ -264,7 +334,7 @@ describe(@"-currentBranchWithError:", ^{
 		GTBranch *currentBranch = [repository currentBranchWithError:&error];
 		expect(currentBranch).notTo(beNil());
 		expect(error).to(beNil());
-		expect(currentBranch.name).to(equal(@"refs/heads/master"));
+		expect(currentBranch.name).to(equal(@"master"));
 	});
 });
 
@@ -276,13 +346,13 @@ describe(@"-createBranchNamed:fromOID:committer:message:error:", ^{
 		NSString *branchName = @"new-test-branch";
 
 		NSError *error = nil;
-		GTBranch *newBranch = [repository createBranchNamed:branchName fromOID:[[GTOID alloc] initWithSHA:currentBranch.SHA] committer:nil message:nil error:&error];
+		GTBranch *newBranch = [repository createBranchNamed:branchName fromOID:currentBranch.OID message:nil error:&error];
 		expect(newBranch).notTo(beNil());
 		expect(error).to(beNil());
 
 		expect(newBranch.shortName).to(equal(branchName));
 		expect(@(newBranch.branchType)).to(equal(@(GTBranchTypeLocal)));
-		expect(newBranch.SHA).to(equal(currentBranch.SHA));
+		expect(newBranch.OID).to(equal(currentBranch.OID));
 	});
 });
 
@@ -304,7 +374,7 @@ describe(@"-remoteBranchesWithError:", ^{
 		expect(error).to(beNil());
 		expect(@(branches.count)).to(equal(@1));
 		GTBranch *remoteBranch = branches[0];
-		expect(remoteBranch.name).to(equal(@"refs/remotes/origin/master"));
+		expect(remoteBranch.name).to(equal(@"origin/master"));
 	});
 });
 
@@ -354,13 +424,65 @@ describe(@"-OIDByCreatingTagNamed:target:tagger:message:error", ^{
 	});
 });
 
+describe(@"move head", ^{
+	beforeEach(^{
+		repository = self.testAppFixtureRepository;
+	});
+
+	//- (BOOL)moveHEADToReference:(GTReference *)reference error:(NSError **)error;
+	it(@"should move to reference", ^{
+		NSError *error = nil;
+		GTReference *originalHead = [repository headReferenceWithError:NULL];
+
+		GTReference *targetReference = [repository lookUpReferenceWithName:@"refs/heads/other-branch" error:NULL];
+		expect(targetReference).notTo(beNil());
+
+		// -> Test the move
+		BOOL success = [repository moveHEADToReference:targetReference error:&error];
+		expect(@(success)).to(beTruthy());
+		expect(error).to(beNil());
+
+		// Verify
+		GTReference *head = [repository headReferenceWithError:&error];
+		expect(head).notTo(beNil());
+		expect(head).notTo(equal(originalHead));
+		expect(head.targetOID.SHA).to(equal(targetReference.targetOID.SHA));
+	});
+
+	//- (BOOL)moveHEADToCommit:(GTCommit *)commit error:(NSError **)error;
+	it(@"should move to commit", ^{
+		NSError *error = nil;
+		GTReference *originalHead = [repository headReferenceWithError:NULL];
+		NSString *targetCommitSHA = @"f7ecd8f4404d3a388efbff6711f1bdf28ffd16a0";
+
+		GTCommit *commit = [repository lookUpObjectBySHA:targetCommitSHA error:NULL];
+		expect(commit).notTo(beNil());
+
+		GTCommit *originalHeadCommit = [repository lookUpObjectByOID:originalHead.targetOID error:NULL];
+		expect(originalHeadCommit).notTo(beNil());
+
+		// -> Test the move
+		BOOL success = [repository moveHEADToCommit:commit error:&error];
+		expect(@(success)).to(beTruthy());
+		expect(error).to(beNil());
+
+		// Test for detached?
+
+		// Verify
+		GTReference *head = [repository headReferenceWithError:&error];
+		expect(head).notTo(beNil());
+		expect(head.targetOID.SHA).to(equal(targetCommitSHA));
+	});
+});
+
+
 describe(@"-checkout:strategy:error:progressBlock:", ^{
 	it(@"should allow references", ^{
 		NSError *error = nil;
-		GTReference *ref = [GTReference referenceByLookingUpReferencedNamed:@"refs/heads/other-branch" inRepository:repository error:&error];
+		GTReference *ref = [repository lookUpReferenceWithName:@"refs/heads/other-branch" error:&error];
 		expect(ref).notTo(beNil());
 		expect(error.localizedDescription).to(beNil());
-		BOOL result = [repository checkoutReference:ref strategy:GTCheckoutStrategyAllowConflicts error:&error progressBlock:nil];
+		BOOL result = [repository checkoutReference:ref options:[GTCheckoutOptions checkoutOptionsWithStrategy:GTCheckoutStrategyAllowConflicts] error:&error];
 		expect(@(result)).to(beTruthy());
 		expect(error.localizedDescription).to(beNil());
 	});
@@ -370,9 +492,64 @@ describe(@"-checkout:strategy:error:progressBlock:", ^{
 		GTCommit *commit = [repository lookUpObjectBySHA:@"1d69f3c0aeaf0d62e25591987b93b8ffc53abd77" objectType:GTObjectTypeCommit error:&error];
 		expect(commit).notTo(beNil());
 		expect(error.localizedDescription).to(beNil());
-		BOOL result = [repository checkoutCommit:commit strategy:GTCheckoutStrategyAllowConflicts error:&error progressBlock:nil];
+		BOOL result = [repository checkoutCommit:commit options:[GTCheckoutOptions checkoutOptionsWithStrategy:GTCheckoutStrategyAllowConflicts] error:&error];
 		expect(@(result)).to(beTruthy());
 		expect(error.localizedDescription).to(beNil());
+	});
+});
+
+describe(@"-checkout:strategy:notifyFlags:error:notifyBlock:progressBlock:", ^{
+	it(@"should fail ref checkout with conflict and notify", ^{
+		NSError *error = nil;
+		GTReference *ref = [repository lookUpReferenceWithName:@"refs/heads/other-branch" error:&error];
+		expect(ref).notTo(beNil());
+		expect(error.localizedDescription).to(beNil());
+		BOOL writeResult = [@"Conflicting data in README.md\n" writeToURL:[repository.fileURL URLByAppendingPathComponent:readmeFile] atomically:YES encoding:NSUTF8StringEncoding error:&error];
+		expect(@(writeResult)).to(beTruthy());
+		__block NSUInteger notifyCount = 0;
+		__block BOOL readmeFileConflicted = NO;
+		int (^notifyBlock)(GTCheckoutNotifyFlags, NSString *, GTDiffFile *, GTDiffFile *, GTDiffFile *);
+		notifyBlock = ^(GTCheckoutNotifyFlags why, NSString *path, GTDiffFile *baseline, GTDiffFile *target, GTDiffFile *workdir) {
+			notifyCount++;
+			if([path isEqualToString:readmeFile] && (why & GTCheckoutNotifyConflict)) {
+				readmeFileConflicted = YES;
+			}
+			return 0;
+		};
+
+		GTCheckoutOptions *options = [GTCheckoutOptions checkoutOptionsWithStrategy:GTCheckoutStrategySafe notifyFlags:GTCheckoutNotifyConflict notifyBlock:notifyBlock];
+		BOOL result = [repository checkoutReference:ref options:options error:&error];
+		expect(@(notifyCount)).to(equal(@(1)));
+		expect(@(readmeFileConflicted)).to(beTruthy());
+		expect(@(result)).to(beFalsy());
+		expect(@(error.code)).to(equal(@(GIT_ECONFLICT)));
+	});
+
+	it(@"should fail commit checkout with conflict and notify", ^{
+		NSError *error = nil;
+		GTCommit *commit = [repository lookUpObjectBySHA:@"1d69f3c0aeaf0d62e25591987b93b8ffc53abd77" objectType:GTObjectTypeCommit error:&error];
+		expect(commit).notTo(beNil());
+		expect(error.localizedDescription).to(beNil());
+		BOOL writeResult = [@"Conflicting data in README1.txt\n" writeToURL:[repository.fileURL URLByAppendingPathComponent:readme1File] atomically:YES encoding:NSUTF8StringEncoding error:&error];
+		expect(@(writeResult)).to(beTruthy());
+		__block NSUInteger notifyCount = 0;
+		__block BOOL readme1FileConflicted = NO;
+		int (^notifyBlock)(GTCheckoutNotifyFlags, NSString *, GTDiffFile *, GTDiffFile *, GTDiffFile *);
+		notifyBlock = ^(GTCheckoutNotifyFlags why, NSString *path, GTDiffFile *baseline, GTDiffFile *target, GTDiffFile *workdir) {
+			notifyCount++;
+			if([path isEqualToString:readme1File] && (why & GTCheckoutNotifyConflict)) {
+				readme1FileConflicted = YES;
+			}
+			return 0;
+		};
+
+
+		GTCheckoutOptions *options = [GTCheckoutOptions checkoutOptionsWithStrategy:GTCheckoutStrategySafe notifyFlags:GTCheckoutNotifyConflict notifyBlock:notifyBlock];
+		BOOL result = [repository checkoutCommit:commit options:options error:&error];
+		expect(@(notifyCount)).to(equal(@(1)));
+		expect(@(readme1FileConflicted)).to(beTruthy());
+		expect(@(result)).to(beFalsy());
+		expect(@(error.code)).to(equal(@(GIT_ECONFLICT)));
 	});
 });
 
@@ -409,7 +586,7 @@ describe(@"-resetToCommit:withResetType:error:", ^{
 
 		GTCommit *commit = [repository lookUpObjectBySHA:resetTargetSHA error:NULL];
 		expect(commit).notTo(beNil());
-		GTCommit *originalHeadCommit = [repository lookUpObjectBySHA:originalHead.targetSHA error:NULL];
+		GTCommit *originalHeadCommit = [repository lookUpObjectByOID:originalHead.targetOID error:NULL];
 		expect(originalHeadCommit).notTo(beNil());
 
 		BOOL success = [repository resetToCommit:commit resetType:GTRepositoryResetTypeSoft error:&error];
@@ -418,14 +595,14 @@ describe(@"-resetToCommit:withResetType:error:", ^{
 
 		GTReference *head = [repository headReferenceWithError:&error];
 		expect(head).notTo(beNil());
-		expect(head.targetSHA).to(equal(resetTargetSHA));
+		expect(head.targetOID.SHA).to(equal(resetTargetSHA));
 
 		success = [repository resetToCommit:originalHeadCommit resetType:GTRepositoryResetTypeSoft error:&error];
 		expect(@(success)).to(beTruthy());
 		expect(error).to(beNil());
 
 		head = [repository headReferenceWithError:&error];
-		expect(head.targetSHA).to(equal(originalHead.targetSHA));
+		expect(head.targetOID).to(equal(originalHead.targetOID));
 	});
 });
 
@@ -539,6 +716,94 @@ describe(@"-branches:", ^{
 			}
 		}
 		expect(@(matches)).to(equal(@2));
+	});
+});
+
+describe(@"-userSignatureForNow", ^{
+	static NSString * const userName = @"johnsmith";
+	static NSString * const email = @"johnsmith@gmail.com";
+
+	__block GTConfiguration *configuration;
+
+	beforeEach(^{
+		configuration = [repository configurationWithError:NULL];
+		expect(configuration).notTo(beNil());
+	});
+
+	it(@"should use the values from the config", ^{
+		[configuration setString:userName forKey:@"user.name"];
+		[configuration setString:email forKey:@"user.email"];
+
+		GTSignature *signature = [repository userSignatureForNow];
+		expect(signature.name).to(equal(userName));
+		expect(signature.email).to(equal(email));
+	});
+
+	describe(@"invalid values", ^{
+		it(@"should use a default value if the name is empty", ^{
+			[configuration setString:@"" forKey:@"user.name"];
+			[configuration setString:email forKey:@"user.email"];
+
+			GTSignature *signature = [repository userSignatureForNow];
+			expect(@(signature.name.length)).to(beGreaterThan(@0));
+			expect(@(signature.email.length)).to(beGreaterThan(@0));
+		});
+
+		it(@"should use a default value if the email is empty", ^{
+			[configuration setString:userName forKey:@"user.name"];
+			[configuration setString:@"" forKey:@"user.email"];
+
+			GTSignature *signature = [repository userSignatureForNow];
+			expect(@(signature.name.length)).to(beGreaterThan(@0));
+			expect(@(signature.email.length)).to(beGreaterThan(@0));
+		});
+
+		it(@"should use a default value if the email contains angled brackets", ^{
+			[configuration setString:userName forKey:@"user.name"];
+			[configuration setString:@"<johnsmith@gmail.com>" forKey:@"user.email"];
+
+			GTSignature *signature = [repository userSignatureForNow];
+			expect(@(signature.name.length)).to(beGreaterThan(@0));
+			expect(@(signature.email.length)).to(beGreaterThan(@0));
+		});
+	});
+});
+
+describe(@"-calculateState:withError:", ^{
+	it(@"should find if the repository is mid-merge", ^{
+		GTRepository *repository = [self conflictedFixtureRepository];
+		GTRepositoryStateType state;
+		BOOL result;
+		result = [repository calculateState:&state withError:NULL];
+		expect(@(result)).to(beTruthy());
+		expect(@(state)).to(equal(@(GTRepositoryStateMerge)));
+	});
+	
+	it(@"should return none otherwise", ^{
+		GTRepository *repository = [self testAppFixtureRepository];
+		GTRepositoryStateType state;
+		BOOL result;
+		result = [repository calculateState:&state withError:NULL];
+		expect(@(result)).to(beTruthy());
+		expect(@(state)).to(equal(@(GTRepositoryStateNone)));
+	});
+});
+
+describe(@"-cleanupStateWithError:", ^{
+	it(@"should return a repository to a pre-merge state", ^{
+		GTRepository *repository = [self conflictedFixtureRepository];
+		
+		GTRepositoryStateType state;
+		BOOL result;
+		result = [repository calculateState:&state withError:NULL];
+		expect(@(result)).to(beTruthy());
+		expect(@(state)).to(equal(@(GTRepositoryStateMerge)));
+		
+		expect(@([repository cleanupStateWithError:NULL])).to(beTruthy());
+		
+		result = [repository calculateState:&state withError:NULL];
+		expect(@(result)).to(beTruthy());
+		expect(@(state)).to(equal(@(GTRepositoryStateNone)));
 	});
 });
 

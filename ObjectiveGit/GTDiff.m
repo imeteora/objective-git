@@ -11,6 +11,7 @@
 #import "GTCommit.h"
 #import "GTRepository.h"
 #import "GTTree.h"
+#import "GTIndex.h"
 #import "NSArray+StringArray.h"
 #import "NSError+Git.h"
 
@@ -94,6 +95,37 @@ NSString *const GTDiffFindOptionsRenameLimitKey = @"GTDiffFindOptionsRenameLimit
 	return [[self alloc] initWithGitDiff:diff repository:repository];
 }
 
++ (instancetype)diffOldTree:(GTTree *)oldTree withNewIndex:(GTIndex *)newIndex inRepository:(GTRepository *)repository options:(NSDictionary *)options error:(NSError **)error {
+	NSParameterAssert(repository != nil);
+	
+	__block git_diff *diff;
+	int status = [self handleParsedOptionsDictionary:options usingBlock:^(git_diff_options *optionsStruct) {
+		return git_diff_tree_to_index(&diff, repository.git_repository, oldTree.git_tree, newIndex.git_index, optionsStruct);
+	}];
+	if (status != GIT_OK) {
+		if (error != NULL) *error = [NSError git_errorFor:status description:@"Failed to create diff between %@ and %@", oldTree.SHA, newIndex];
+		return nil;
+	}
+	
+	return [[self alloc] initWithGitDiff:diff repository:repository];
+}
+
++ (instancetype)diffOldIndex:(GTIndex *)oldIndex withNewIndex:(GTIndex *)newIndex inRepository:(GTRepository *)repository options:(NSDictionary *)options error:(NSError **)error
+{
+	NSParameterAssert(repository != nil);
+	
+	__block git_diff *diff;
+	int status = [self handleParsedOptionsDictionary:options usingBlock:^(git_diff_options *optionsStruct) {
+		return git_diff_index_to_index(&diff, repository.git_repository, oldIndex.git_index, newIndex.git_index, optionsStruct);
+	}];
+	if (status != GIT_OK) {
+		if (error != NULL) *error = [NSError git_errorFor:status description:@"Failed to create diff between %@ and %@", oldIndex, newIndex];
+		return nil;
+	}
+	
+	return [[self alloc] initWithGitDiff:diff repository:repository];
+}
+
 + (instancetype)diffIndexFromTree:(GTTree *)tree inRepository:(GTRepository *)repository options:(NSDictionary *)options error:(NSError **)error {
 	NSParameterAssert(repository != nil);
 	NSParameterAssert(tree == nil || [tree.repository isEqual:repository]);
@@ -156,6 +188,11 @@ NSString *const GTDiffFindOptionsRenameLimitKey = @"GTDiffFindOptionsRenameLimit
 	return HEADIndexDiff;
 }
 
+- (instancetype)init {
+	NSAssert(NO, @"Call to an unavailable initializer.");
+	return nil;
+}
+
 - (instancetype)initWithGitDiff:(git_diff *)diff repository:(GTRepository *)repository {
 	NSParameterAssert(diff != NULL);
 	NSParameterAssert(repository != nil);
@@ -197,7 +234,7 @@ NSString *const GTDiffFindOptionsRenameLimitKey = @"GTDiffFindOptionsRenameLimit
 	return git_diff_num_deltas(self.git_diff);
 }
 
-- (NSUInteger)numberOfDeltasWithType:(GTDiffDeltaType)deltaType {
+- (NSUInteger)numberOfDeltasWithType:(GTDeltaType)deltaType {
 	return git_diff_num_deltas_of_type(self.git_diff, (git_delta_t)deltaType);
 }
 
